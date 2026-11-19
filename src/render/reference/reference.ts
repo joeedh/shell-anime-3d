@@ -58,6 +58,8 @@ export class ReferencePass {
   ref: ReferenceMesh | undefined;
   stats: CompareStats | undefined;
   onStats: ((s: CompareStats) => void) | undefined;
+  /** While set (during a sculpt stroke), the refined mesh is not rebuilt. */
+  frozen = false;
   /** Debug switches in RefParams.pad: 1 = skip the dimple test, 2 = skip containment. */
   debugFlags = 0;
   private key: [Mesh?, number?] = [];
@@ -241,6 +243,7 @@ export class ReferencePass {
   /** Rebuilds the refined mesh when the source geometry changed. */
   sync(mesh: Mesh) {
     if (this.key[0] === mesh && this.key[1] === mesh.geomVersion) return;
+    if (this.frozen && this.ref) return;
     this.key = [mesh, mesh.geomVersion];
     this.ref = buildReferenceMesh(mesh);
     this.buffers.extra = this.ref.kmax;

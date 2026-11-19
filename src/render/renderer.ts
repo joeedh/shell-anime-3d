@@ -6,7 +6,7 @@ import commonWGSL from "./shaders/common.wgsl";
 import baseWGSL from "./shaders/base.wgsl";
 import shellWGSL from "./shaders/shell.wgsl";
 import pnWGSL from "./shaders/pn.wgsl";
-import { computeCurvature } from "../mesh/curvature";
+import { computeCurvature, updateCurvature } from "../mesh/curvature";
 import type { CurvatureField } from "../mesh/curvature";
 import type { Mesh } from "../mesh/mesh";
 import { CompareMode, ReferencePass } from "./reference/reference";
@@ -181,6 +181,15 @@ export class Renderer {
     });
     this.bindGroupKey = key;
     return this.bindGroup;
+  }
+
+  /** Incremental curvature after a sculpt dab; anything else falls back to a full recompute. */
+  geometryEdited(mesh: Mesh, verts: Iterable<number>, prevVersion: number) {
+    if (this.curvature && this.curvatureKey[0] === mesh && this.curvatureKey[1] === prevVersion) {
+      updateCurvature(mesh, this.curvature, verts);
+      this.curvatureKey = [mesh, mesh.geomVersion];
+      this.meshBuffers.curvatureH = this.curvature.H;
+    }
   }
 
   /** Brings GPU copies of the mesh and maps up to date; also used by tools before a stroke. */

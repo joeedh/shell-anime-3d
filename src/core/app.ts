@@ -18,6 +18,7 @@ import "../editors/viewport/viewport";
 import "../editors/properties/properties";
 import "../mesh/mesh_ops";
 import "../paint/paint_ops";
+import "../sculpt/sculpt_ops";
 import { TriBVH } from "../mesh/bvh";
 import type { Mesh } from "../mesh/mesh";
 import { defineAPI } from "./api";
@@ -68,6 +69,21 @@ export class AppState {
       c.version = mesh.geomVersion;
     }
     return c.bvh;
+  }
+
+  /**
+   * Call after vertices moved in place (topology unchanged): bumps the geometry version,
+   * refits the BVH instead of rebuilding it, and updates curvature only on `verts`.
+   */
+  geometryEdited(mesh: Mesh, verts: Iterable<number>) {
+    const prev = mesh.geomVersion;
+    mesh.geomVersion++;
+    const c = this.bvhCache;
+    if (c.mesh === mesh && c.version === prev && c.bvh) {
+      c.bvh.refit();
+      c.version = mesh.geomVersion;
+    }
+    this.renderer.geometryEdited(mesh, verts, prev);
   }
 
   newScene() {

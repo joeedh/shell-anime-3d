@@ -411,7 +411,7 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-Status: 1-8 done.
+Status: all milestones done.
 
 1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
@@ -487,7 +487,18 @@ Status: 1-8 done.
      - On the cube, both models miss 6-7k pixels against the butterfly reference. Butterfly
        and PN smooth a cube's sharp edges differently, so "the smooth surface" is ambiguous
        there.
-9. Sculpt brushes.
+9. [done] Sculpt brushes (`src/sculpt/`). Pick Sculpt Draw or Sculpt Smooth as the tool;
+   Ctrl inverts draw.
+   - Per dab: normals out to the 1-ring, curvature out to the 2-ring, BVH refit. A test
+     confirms the 2-ring update matches a full recompute.
+   - Deviation: the GPU vertex and PN buffers are re-uploaded whole per dab, not by range.
+     It is fast enough at these mesh sizes.
+   - The reference is frozen during a stroke and rebuilt once at its end. A stroke clears
+     `isAnalytic`, and undo restores it.
+   - A stroke on a solved mesh reports that the correction map is stale.
+   - Verified in the app: draw stroke, then undo and redo (positions restored exactly), and
+     a ridge across the silhouette compared against the rebuilt reference after a re-solve
+     (PN: 497 missing, 20492 shared).
 
 ## Pressure-test results (round 1, 2026-11-19)
 

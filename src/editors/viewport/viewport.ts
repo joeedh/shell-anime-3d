@@ -5,6 +5,7 @@ import { ViewMode, ViewNavigateOp } from "./view_ops";
 import type { Camera } from "../../core/camera";
 import { invert, transformPoint } from "../../math/mat4";
 import { PaintStrokeOp } from "../../paint/paint_ops";
+import { SculptStrokeOp } from "../../sculpt/sculpt_ops";
 import { ToolMode } from "../../paint/brush";
 import { RefOverflow } from "../../render/reference/reference";
 import type { CompareStats } from "../../render/reference/reference";
@@ -110,11 +111,11 @@ export class ViewportEditor extends Editor {
 
   private startStroke(e: PointerEvent) {
     const mode = _appstate.scene.toolMode;
-    if (mode !== ToolMode.PAINT) return;
     e.preventDefault();
     _appstate.renderer.syncScene(_appstate.scene);
+    const op = mode === ToolMode.PAINT ? new PaintStrokeOp(this, e) : new SculptStrokeOp(this, e);
     this.push_ctx_active();
-    void this.ctx.toolstack.execTool(this.ctx, new PaintStrokeOp(this, e), e);
+    void this.ctx.toolstack.execTool(this.ctx, op, e);
     this.pop_ctx_active();
   }
 
