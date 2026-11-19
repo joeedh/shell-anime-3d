@@ -411,14 +411,14 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-Status: 1-4 done.
+Status: 1-5 done.
 
 1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
 2. [done] Mesh, primitives (capsule replaces cylinder, so the reference can project onto it), camera, base render.
 3. [done] Serialization, binary and JSON (native dialogs not yet clicked through by hand).
 4. [done] UV unwrap, paint textures, GPU painting, tile undo, `wmax` compute. Curvature and butterfly modules landed early.
-5. Shell pass with the width model and the raw-hull baseline; curvature and the sphere model.
+5. [done] Shell pass with the width model and the raw-hull baseline; curvature and the sphere model (with frag_depth from the exit point).
 6. PN-patch model.
 7. Butterfly reference, reference and compare passes, with stats.
 8. Correction-map solver.

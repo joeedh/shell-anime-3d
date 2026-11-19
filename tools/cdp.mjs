@@ -4,7 +4,7 @@
  *
  *   node tools/cdp.mjs pages
  *   node tools/cdp.mjs eval "<expression>"     (awaits promises, prints JSON)
- *   node tools/cdp.mjs screenshot out.png
+ *   node tools/cdp.mjs screenshot out.png [x y w h scale]   (optional clip, CSS px)
  *   node tools/cdp.mjs logs [seconds]          (console + exceptions after a reload)
  *   node tools/cdp.mjs reload
  *   node tools/cdp.mjs drag x0 y0 x1 y1 [steps] [button] [modifiers]
@@ -96,7 +96,12 @@ async function main() {
     }
     case "screenshot": {
       const { ws, send } = await connect();
-      const r = await send("Page.captureScreenshot", { format: "png" });
+      const params = { format: "png" };
+      if (rest.length >= 5) {
+        const [x, y, width, height, scale] = rest.slice(1, 6).map(Number);
+        params.clip = { x, y, width, height, scale };
+      }
+      const r = await send("Page.captureScreenshot", params);
       fs.writeFileSync(rest[0] ?? "screenshot.png", Buffer.from(r.data, "base64"));
       console.log("wrote", rest[0] ?? "screenshot.png");
       ws.close();

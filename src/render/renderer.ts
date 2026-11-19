@@ -4,6 +4,10 @@ import { PaintGPU } from "../paint/paint_gpu";
 import type { Scene } from "../core/scene";
 import commonWGSL from "./shaders/common.wgsl";
 import baseWGSL from "./shaders/base.wgsl";
+import shellWGSL from "./shaders/shell.wgsl";
+import { computeCurvature } from "../mesh/curvature";
+import type { CurvatureField } from "../mesh/curvature";
+import type { Mesh } from "../mesh/mesh";
 
 /** Bytes in the Camera uniform struct (common.wgsl). */
 const CAMERA_UNIFORM_SIZE = 336;
@@ -27,6 +31,9 @@ export class Renderer {
   private cameraBuffer: GPUBuffer | undefined;
   private layout: GPUBindGroupLayout | undefined;
   private basePipeline: GPURenderPipeline | undefined;
+  private shellPipeline: GPURenderPipeline | undefined;
+  curvature: CurvatureField | undefined;
+  private curvatureKey: [Mesh?, number?] = [];
   private bindGroup: GPUBindGroup | undefined;
   private bindGroupKey: unknown[] = [];
   private targets = new WeakMap<GPUCanvasContext, Targets>();
@@ -66,6 +73,17 @@ export class Renderer {
       vertex: { module, entryPoint: "vsBase" },
       fragment: { module, entryPoint: "fsBase", targets: [{ format }] },
       primitive: { topology: "triangle-list", cullMode: "back", frontFace: "ccw" },
+      depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
+    });
+
+    const shellModule = device.createShaderModule({ label: "shell", code: commonWGSL + shellWGSL });
+    this.shellPipeline = device.createRenderPipeline({
+      label: "shell",
+      layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
+      vertex: { module: shellModule, entryPoint: "vsShell" },
+      fragment: { module: shellModule, entryPoint: "fsShell", targets: [{ format }] },
+      // inverted hull: draw the back faces of the extruded shell
+      primitive: { topology: "triangle-list", cullMode: "front", frontFace: "ccw" },
       depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
     });
   }
@@ -138,6 +156,13 @@ export class Renderer {
   /** Brings GPU copies of the mesh and maps up to date; also used by tools before a stroke. */
   syncScene(scene: Scene) {
     this.paint.sync(scene.maps);
+    const mesh = scene.mesh;
+    if (this.curvatureKey[0] !== mesh || this.curvatureKey[1] !== mesh.geomVersion) {
+      this.curvature = computeCurvature(mesh, this.curvature);
+      this.meshBuffers.curvatureH = this.curvature.H;
+      this.meshBuffers.invalidate();
+      this.curvatureKey = [mesh, mesh.geomVersion];
+    }
     this.meshBuffers.sync(scene.mesh);
     this.paint.syncUVs(scene.mesh);
     if (this.wmaxDirty || this.wmaxUpload !== this.meshBuffers.uploadCount) {
@@ -174,6 +199,8 @@ export class Renderer {
     });
     pass.setPipeline(this.basePipeline!);
     pass.setBindGroup(0, this.getBindGroup());
+    pass.draw(this.meshBuffers.triCount * 3);
+    pass.setPipeline(this.shellPipeline!);
     pass.draw(this.meshBuffers.triCount * 3);
     pass.end();
 
