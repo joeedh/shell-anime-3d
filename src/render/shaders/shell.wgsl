@@ -11,6 +11,7 @@ struct ShellOut {
   // algebraic sphere in view space: u0, u.xyz, u4
   @location(3) sphereU: vec4f,
   @location(4) sphereU4: f32,
+  @location(5) world: vec3f,
 };
 
 @vertex
@@ -30,6 +31,7 @@ fn vsShell(@builtin(vertex_index) vi: u32) -> ShellOut {
   var o: ShellOut;
   o.clip = cam.viewProj * vec4f(world, 1.0);
   o.viewPos = (cam.view * vec4f(world, 1.0)).xyz;
+  o.world = world;
   o.bary = barycentricCorner(corner);
   o.tri = tri;
   o.sphereU = vec4f(0.5 * H * dot(P, P) - dot(N, P), N - H * P);
@@ -100,8 +102,22 @@ fn fsShell(i: ShellOut) -> ShellFrag {
   var res: ClipResult;
   res.keep = true;
   res.hasExit = false;
+  var exitWorld = vec3f(0.0);
+  var hasWorldExit = false;
   if (cam.clipModel > 0.5 && cam.clipModel < 1.5) {
     res = sphereClip(i.sphereU, i.sphereU4, O, D, r);
+  } else if (cam.clipModel > 1.5) {
+    // PN: world-space ray through this fragment; r is taken at the closest point
+    let pc = pnClosest(i.tri, i.world, worldDir);
+    let pt = tris[pc.tri];
+    let cb = max(vec3f(1.0 - pc.u - pc.v, pc.u, pc.v), vec3f(0.0));
+    let cuv = (pt.uv0 * cb.x + pt.uv1 * cb.y + pt.uv2 * cb.z) / (cb.x + cb.y + cb.z);
+    let pr = targetWidthPx(cuv, worldDir) * pw;
+    res.keep = pc.dist < pr;
+    if (res.keep) {
+      hasWorldExit = true;
+      exitWorld = i.world + worldDir * (pc.t + sqrt(max(pr * pr - pc.dist * pc.dist, 0.0)));
+    }
   }
   if (!res.keep) {
     discard;
@@ -110,6 +126,10 @@ fn fsShell(i: ShellOut) -> ShellFrag {
   var o: ShellFrag;
   o.color = vec4f(cam.lineColor, 1.0);
   o.depth = i.clip.z;
+  if (hasWorldExit) {
+    let c = cam.viewProj * vec4f(exitWorld, 1.0);
+    o.depth = clamp(c.z / c.w, 0.0, 1.0);
+  }
   if (res.hasExit) {
     // depth of the offset surface's exit point, so nearer geometry occludes correctly
     let p = O + D * res.exitT;

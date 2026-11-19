@@ -36,3 +36,22 @@ took real effort to find, or when you learn a diagnostic technique worth reusing
   `--disable-background-timer-throttling`.
 - **How to spot it next time:**
   `node tools/cdp.mjs eval "document.visibilityState"` prints `hidden`.
+
+## `cdp logs` shows errors that were already fixed
+
+- **Symptom:** after fixing a WGSL error and rebuilding, `pnpm run cdp logs` still prints the
+  old error, even though the bundle contains the fixed shader.
+- **Cause:** `Runtime.enable` replays the console messages already buffered for the page, so
+  the output mixed messages from before the reload with messages from after it.
+- **Fix:** `tools/cdp.mjs` ignores console events until `Runtime.enable` and `Page.enable`
+  have returned, and only then reloads.
+- **How to spot it next time:** grep `app/dist/app.js` for the fixed line. If the bundle is
+  right and the log is not, the log is stale.
+
+## WGSL: `from` is a reserved word
+
+- **Symptom:** `Error while parsing WGSL: 'from' is a reserved keyword` on a parameter name.
+- **Cause:** WGSL reserves many words that are legal identifiers in TS (`from`, `to` is fine,
+  also `module`, `self`, `type` is a keyword, and others).
+- **Fix:** rename. Check the WGSL spec's reserved-word list when porting TS to WGSL line for
+  line.

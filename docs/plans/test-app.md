@@ -411,7 +411,7 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-Status: 1-5 done.
+Status: 1-6 done.
 
 1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
@@ -419,7 +419,17 @@ Status: 1-5 done.
 3. [done] Serialization, binary and JSON (native dialogs not yet clicked through by hand).
 4. [done] UV unwrap, paint textures, GPU painting, tile undo, `wmax` compute. Curvature and butterfly modules landed early.
 5. [done] Shell pass with the width model and the raw-hull baseline; curvature and the sphere model (with frag_depth from the exit point).
-6. PN-patch model.
+6. [done] PN-patch model.
+   - Measured on a sphere: a Newton walk started from the shell fragment's own triangle
+     misclassified up to 15% of band rays at e = 6r (42/280), because Newton steps across
+     many thin triangles one hop at a time and runs out of iterations.
+   - Fix: a flat pre-walk first. It projects the flat mesh along the ray and walks toward
+     the ray's footprint (cheap, no patch evaluation), then Newton refines on the patches.
+     The result is 0/280 at every tested density and overshoot (64-256 segments, e = 2r-6r).
+   - Clamping to the triangle instead of extrapolating when hops run out made things worse
+     without the pre-walk (98/280); with it, hops rarely run out.
+   - Known: a stray one-pixel gap appeared once in a zoomed capture at 12 px width; not
+     investigated.
 7. Butterfly reference, reference and compare passes, with stats.
 8. Correction-map solver.
 9. Sculpt brushes.

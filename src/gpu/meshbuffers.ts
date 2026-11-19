@@ -1,10 +1,15 @@
 import { getGPU } from "./device";
 import type { Mesh } from "../mesh/mesh";
+import { triNeighbours } from "../mesh/adjacency";
+import { pnControlPoints } from "../math/pn";
+import type { Vec3 } from "../math/pn";
 
 /** Floats per vertex record: pos.xyz, H, normal.xyz, wmax, cAbs, cRel, pad, pad. */
 export const VERTEX_STRIDE = 12;
 /** Words per triangle record: i0, i1, i2, pad, uv0.xy, uv1.xy, uv2.xy, pad, pad. */
 export const TRI_STRIDE = 12;
+/** vec4s per PN record: 10 control points (xyz), then the 3 edge neighbours (as i32 bits). */
+export const PN_STRIDE = 11;
 
 /**
  * GPU copies of a mesh for vertex pulling. Packed into two storage buffers because the
@@ -16,6 +21,9 @@ export class MeshBuffers {
   /** CSR vertex -> triangles, for compute passes (wmax). */
   vertTriStartBuffer: GPUBuffer | undefined;
   vertTrisBuffer: GPUBuffer | undefined;
+  /** PN control points and edge neighbours per triangle (clip model 2). */
+  pnBuffer: GPUBuffer | undefined;
+  private neighbours: Int32Array | undefined;
   triCount = 0;
   vertCount = 0;
   /** Bumped on every upload; per-vertex GPU-computed fields (wmax) must be refreshed after. */
@@ -36,6 +44,29 @@ export class MeshBuffers {
     this.mesh = mesh;
     this.geomVersion = mesh.geomVersion;
     this.upload(mesh, !sameTopology);
+  }
+
+  private buildPN(mesh: Mesh, nb: Int32Array) {
+    const nt = mesh.triCount;
+    const buf = new ArrayBuffer(Math.max(1, nt) * PN_STRIDE * 16);
+    const f = new Float32Array(buf);
+    const iv = new Int32Array(buf);
+    const p = mesh.positions,
+      n = mesh.normals;
+    const at = (a: Float32Array, i: number): Vec3 => [a[i * 3], a[i * 3 + 1], a[i * 3 + 2]];
+    for (let t = 0; t < nt; t++) {
+      const ids = [mesh.tris[t * 3], mesh.tris[t * 3 + 1], mesh.tris[t * 3 + 2]];
+      const cp = pnControlPoints(
+        ids.map((v) => at(p, v)),
+        ids.map((v) => at(n, v)),
+      );
+      const o = t * PN_STRIDE * 4;
+      for (let k = 0; k < 10; k++) f.set(cp[k], o + k * 4);
+      iv[o + 40] = nb[t * 3];
+      iv[o + 41] = nb[t * 3 + 1];
+      iv[o + 42] = nb[t * 3 + 2];
+    }
+    return f;
   }
 
   /** Forces the next sync to upload, e.g. after per-vertex inputs changed. */
@@ -110,6 +141,20 @@ export class MeshBuffers {
       this.vertTriStartBuffer = mk("vertTriStart", mesh.vertTriStart);
       this.vertTrisBuffer = mk("vertTris", mesh.vertTris);
     }
+    if (recreate || !this.neighbours) {
+      this.neighbours = triNeighbours(mesh);
+    }
+    const pnData = this.buildPN(mesh, this.neighbours);
+    if (recreate || !this.pnBuffer || this.pnBuffer.size !== pnData.byteLength) {
+      this.pnBuffer?.destroy();
+      this.pnBuffer = device.createBuffer({
+        label: "pn patches",
+        size: pnData.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+    }
+    device.queue.writeBuffer(this.pnBuffer, 0, pnData);
+
     this.triCount = nt;
     this.vertCount = nv;
     this.uploadCount++;

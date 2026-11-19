@@ -5,6 +5,7 @@ import type { Scene } from "../core/scene";
 import commonWGSL from "./shaders/common.wgsl";
 import baseWGSL from "./shaders/base.wgsl";
 import shellWGSL from "./shaders/shell.wgsl";
+import pnWGSL from "./shaders/pn.wgsl";
 import { computeCurvature } from "../mesh/curvature";
 import type { CurvatureField } from "../mesh/curvature";
 import type { Mesh } from "../mesh/mesh";
@@ -57,6 +58,7 @@ export class Renderer {
         { binding: 2, visibility: vis, buffer: { type: "read-only-storage" } },
         { binding: 3, visibility: vis, texture: { sampleType: "float" } },
         { binding: 4, visibility: vis, sampler: { type: "filtering" } },
+        { binding: 5, visibility: vis, buffer: { type: "read-only-storage" } },
       ],
     });
     this.sampler = device.createSampler({
@@ -76,7 +78,7 @@ export class Renderer {
       depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
     });
 
-    const shellModule = device.createShaderModule({ label: "shell", code: commonWGSL + shellWGSL });
+    const shellModule = device.createShaderModule({ label: "shell", code: commonWGSL + pnWGSL + shellWGSL });
     this.shellPipeline = device.createRenderPipeline({
       label: "shell",
       layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
@@ -134,7 +136,7 @@ export class Renderer {
 
   private getBindGroup() {
     const mb = this.meshBuffers;
-    const key = [mb.vertexBuffer, mb.triBuffer, this.paint.texture];
+    const key = [mb.vertexBuffer, mb.triBuffer, this.paint.texture, mb.pnBuffer];
     if (this.bindGroup && key.every((k, i) => k === this.bindGroupKey[i])) {
       return this.bindGroup;
     }
@@ -147,6 +149,7 @@ export class Renderer {
         { binding: 2, resource: { buffer: mb.triBuffer! } },
         { binding: 3, resource: this.paint.texture!.createView() },
         { binding: 4, resource: this.sampler! },
+        { binding: 5, resource: { buffer: mb.pnBuffer! } },
       ],
     });
     this.bindGroupKey = key;

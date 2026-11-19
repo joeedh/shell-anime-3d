@@ -111,7 +111,10 @@ async function main() {
     case "logs": {
       const { ws, send, listeners } = await connect();
       const seconds = cmd === "logs" ? parseFloat(rest[0] ?? "4") : 0;
+      // Runtime.enable replays earlier console messages; only report what follows the reload
+      let live = false;
       listeners.push((msg) => {
+        if (!live) return;
         if (msg.method === "Runtime.consoleAPICalled") {
           const p = msg.params;
           console.log(`[${p.type}]`, p.args.map(fmtRemote).join(" "));
@@ -122,6 +125,7 @@ async function main() {
       });
       await send("Runtime.enable");
       await send("Page.enable");
+      live = true;
       await send("Page.reload", { ignoreCache: true });
       await new Promise((r) => setTimeout(r, seconds * 1000));
       ws.close();
