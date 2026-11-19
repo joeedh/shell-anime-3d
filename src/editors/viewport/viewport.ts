@@ -6,6 +6,8 @@ import type { Camera } from "../../core/camera";
 import { invert, transformPoint } from "../../math/mat4";
 import { PaintStrokeOp } from "../../paint/paint_ops";
 import { ToolMode } from "../../paint/brush";
+import { RefOverflow } from "../../render/reference/reference";
+import type { CompareStats } from "../../render/reference/reference";
 
 /**
  * 3D view: a WebGPU canvas behind the area's header.
@@ -16,6 +18,8 @@ export class ViewportEditor extends Editor {
   canvas: HTMLCanvasElement;
   gpuContext: GPUCanvasContext | undefined;
   private lastDpi: number | undefined;
+  /** Compare counts and reference health, shown while the reference is on. */
+  private statsDiv: HTMLDivElement;
 
   constructor() {
     super();
@@ -28,6 +32,20 @@ export class ViewportEditor extends Editor {
     this.canvas.style.zIndex = "-2";
     this.canvas.style.pointerEvents = "none";
     this.shadow.appendChild(this.canvas);
+
+    this.statsDiv = document.createElement("div");
+    const st = this.statsDiv.style;
+    st.position = "absolute";
+    st.right = "8px";
+    st.bottom = "8px";
+    st.padding = "4px 8px";
+    st.font = "12px monospace";
+    st.whiteSpace = "pre";
+    st.background = "rgba(255,255,255,0.8)";
+    st.borderRadius = "4px";
+    st.pointerEvents = "none";
+    st.display = "none";
+    this.shadow.appendChild(this.statsDiv);
 
     this.addEventListener("pointerdown", (e) => this.onPointerDown(e));
     this.addEventListener("wheel", (e) => this.onWheel(e), { passive: false });
@@ -145,7 +163,35 @@ export class ViewportEditor extends Editor {
 
   draw() {
     const ctx = this.ensureContext();
-    _appstate.renderer.draw(ctx, _appstate.scene, this.canvas.width, this.canvas.height);
+    const renderer = _appstate.renderer;
+    const settings = _appstate.scene.settings;
+    renderer.reference.onStats = (s) => this.showStats(s);
+    if (!settings.showReference && !settings.showCompare) {
+      this.statsDiv.style.display = "none";
+    }
+    renderer.draw(ctx, _appstate.scene, this.canvas.width, this.canvas.height);
+  }
+
+  private showStats(s: CompareStats) {
+    const settings = _appstate.scene.settings;
+    if (!settings.showReference && !settings.showCompare) return;
+    const lines: string[] = [];
+    if (settings.showCompare) {
+      const total = s.both + s.refOnly + s.modelOnly;
+      const pct = (n: number) => (total ? ((100 * n) / total).toFixed(1) : "0.0") + "%";
+      lines.push(`both        ${s.both}  ${pct(s.both)}`);
+      lines.push(`missing     ${s.refOnly}  ${pct(s.refOnly)}  (red)`);
+      lines.push(`extra       ${s.modelOnly}  ${pct(s.modelOnly)}  (blue)`);
+    }
+    lines.push(`balls ${s.samples}, drawn ${s.draws}, butterfly ${s.levels}`);
+    const over: string[] = [];
+    if (s.overflow & RefOverflow.SAMPLES) over.push("sample buffer full");
+    if (s.overflow & RefOverflow.DRAWS) over.push("draw list full");
+    if (s.overflow & RefOverflow.GRID) over.push("grid clamped (h > r/2)");
+    if (over.length) lines.push("OVERFLOW: " + over.join(", "));
+    lines.push(`gpu ${_appstate.renderer.gpuMs.toFixed(0)} ms`);
+    this.statsDiv.textContent = lines.join(String.fromCharCode(10));
+    this.statsDiv.style.display = "block";
   }
 
   update() {

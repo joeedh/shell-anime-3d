@@ -67,15 +67,10 @@ fn sphereClip(u: vec4f, u4: f32, O: vec3f, D: vec3f, r: f32) -> ClipResult {
   return res;
 }
 
-// Target width (reference px) at a base point: R * lerp(wFront, wProfile, 1 - |v.front|).
-fn targetWidthPx(uv: vec2f, viewDirWorld: vec3f) -> f32 {
-  let m = sampleMaps(uv);
-  let headOn = abs(dot(viewDirWorld, normalize(cam.frontAxis)));
-  return max(m.r, 0.0) * max(mix(m.g, m.b, 1.0 - headOn), 0.0);
-}
-
 struct ShellFrag {
   @location(0) color: vec4f,
+  // model mask for the compare pass
+  @location(1) mask: f32,
   @builtin(frag_depth) depth: f32,
 };
 
@@ -125,6 +120,7 @@ fn fsShell(i: ShellOut) -> ShellFrag {
 
   var o: ShellFrag;
   o.color = vec4f(cam.lineColor, 1.0);
+  o.mask = 1.0;
   o.depth = i.clip.z;
   if (hasWorldExit) {
     let c = cam.viewProj * vec4f(exitWorld, 1.0);

@@ -411,7 +411,7 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-Status: 1-6 done.
+Status: 1-7 done.
 
 1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
@@ -430,7 +430,32 @@ Status: 1-6 done.
      without the pre-walk (98/280); with it, hops rarely run out.
    - Known: a stray one-pixel gap appeared once in a zoomed capture at 12 px width; not
      investigated.
-7. Butterfly reference, reference and compare passes, with stats.
+7. [done] Butterfly reference and compare.
+   - Code: `src/render/reference/` (refined mesh, GPU passes), `ref_build.wgsl` (classify,
+     emit, hash), `ref_draw.wgsl` (impostors), `compare.wgsl`. Stats show in the viewport's
+     bottom-right corner.
+   - Butterfly levels drop below 3 when the refined mesh would pass 300k triangles.
+   - Union of balls, as defaulted. The "ambiguous" class for the union-vs-per-sheet
+     question was not cheap and is not implemented.
+   - One hash level with cell size r_max, not one per r class. Cost grows if a few regions
+     are painted much wider than the rest.
+   - Changes found during implementation:
+     - **Precision:** far points and containment are computed relative to the ball center.
+       With absolute f32 positions the error was about 0.5% of r, which punched holes all
+       over the line (see `docs/debugging.md`).
+     - **Only back-facing balls get impostors** (n·v > -0.02). A real exit on the outer
+       envelope lies along +n from its ball, so front-facing balls can only be containers.
+       This cut the draws by 44% with identical compare counts.
+     - Far points behind the refined base depth are discarded before the hash lookups, and
+       the lookup visits the point's own cell first.
+   - Cost: about 100-200 ms per frame for a full-screen sphere at a 3 px width (about 900 ms
+     before the three changes above), and about 550 ms for the torus. Containment lookups
+     dominate. Fine for a toggle in a test app, not for interactive use.
+   - Measured on a 64-segment sphere with c_abs = 0.01: 160 reference pixels missing from
+     the sphere model, against 20443 shared. The extras (blue) are mostly the coarse base
+     mesh's silhouette, which the model draws on and the reference does not.
+   - Without a margin the model misses the outer edge between vertices: the faceted shell
+     falls inside R + r there. That is the deficit M8's correction map targets.
 8. Correction-map solver.
 9. Sculpt brushes.
 

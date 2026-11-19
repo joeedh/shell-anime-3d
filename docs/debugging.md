@@ -51,7 +51,24 @@ took real effort to find, or when you learn a diagnostic technique worth reusing
 ## WGSL: `from` is a reserved word
 
 - **Symptom:** `Error while parsing WGSL: 'from' is a reserved keyword` on a parameter name.
-- **Cause:** WGSL reserves many words that are legal identifiers in TS (`from`, `to` is fine,
-  also `module`, `self`, `type` is a keyword, and others).
+- **Cause:** WGSL reserves many words that are ordinary identifiers in TypeScript, and
+  `from` is one of them.
 - **Fix:** rename. Check the WGSL spec's reserved-word list when porting TS to WGSL line for
   line.
+
+## Reference line full of speckled holes
+
+- **Symptom:** in compare mode the reference line had scattered missing pixels across the
+  whole band. A CPU replay of the same balls and the same per-pixel rule, in doubles, had
+  none.
+- **Cause:** f32 cancellation. The impostor solved the ray-sphere intersection as
+  `b*b - c` with `|O - C|^2` around 16 (the eye is about 4 units away). That put an error
+  of about 0.5% of r into the far point F, far more than the containment tolerance, so real
+  exits tested as "inside a neighbouring ball" and were discarded.
+- **Fix:** `ref_draw.wgsl` computes F as an offset from the ball's center
+  (`-perp + D * sqrt(r^2 - |perp|^2)`), and the containment test adds the small offsets
+  `(p_own - p_j) + rel` instead of differencing absolute positions.
+- **How to spot it next time:** holes that disappear when containment is disabled
+  (`_appstate.renderer.reference.debugFlags = 2`) while the CPU replay shows none. Any
+  test with a tolerance below about 1e-5 relative, on positions several units from the
+  origin, needs relative coordinates in f32.

@@ -4,7 +4,7 @@ import { triNeighbours } from "../mesh/adjacency";
 import { pnControlPoints } from "../math/pn";
 import type { Vec3 } from "../math/pn";
 
-/** Floats per vertex record: pos.xyz, H, normal.xyz, wmax, cAbs, cRel, pad, pad. */
+/** Floats per vertex record: pos.xyz, H, normal.xyz, wmax, cAbs, cRel, extra, pad. */
 export const VERTEX_STRIDE = 12;
 /** Words per triangle record: i0, i1, i2, pad, uv0.xy, uv1.xy, uv2.xy, pad, pad. */
 export const TRI_STRIDE = 12;
@@ -34,6 +34,11 @@ export class MeshBuffers {
   /** Per-vertex values the renderer owns (curvature, conservative width), set before sync. */
   curvatureH: Float32Array | undefined;
   wmax: Float32Array | undefined;
+  /** Optional per-vertex value in the record's spare slot (the reference stores kmax). */
+  extra: Float32Array | undefined;
+
+  /** @param withPN build PN patches; without them `pnBuffer` is a 16-byte placeholder. */
+  constructor(readonly withPN = true) {}
 
   /** Re-uploads if the mesh object or its geometry version changed. */
   sync(mesh: Mesh) {
@@ -92,6 +97,7 @@ export class MeshBuffers {
       vdata[o + 7] = this.wmax?.[v] ?? 0;
       vdata[o + 8] = mesh.cAbs[v] ?? 0;
       vdata[o + 9] = mesh.cRel[v] ?? 0;
+      vdata[o + 10] = this.extra?.[v] ?? 0;
     }
 
     const tbuf = new ArrayBuffer(Math.max(1, nt) * TRI_STRIDE * 4);
@@ -141,10 +147,10 @@ export class MeshBuffers {
       this.vertTriStartBuffer = mk("vertTriStart", mesh.vertTriStart);
       this.vertTrisBuffer = mk("vertTris", mesh.vertTris);
     }
-    if (recreate || !this.neighbours) {
+    if (this.withPN && (recreate || !this.neighbours)) {
       this.neighbours = triNeighbours(mesh);
     }
-    const pnData = this.buildPN(mesh, this.neighbours);
+    const pnData = this.withPN ? this.buildPN(mesh, this.neighbours!) : new Float32Array(4);
     if (recreate || !this.pnBuffer || this.pnBuffer.size !== pnData.byteLength) {
       this.pnBuffer?.destroy();
       this.pnBuffer = device.createBuffer({

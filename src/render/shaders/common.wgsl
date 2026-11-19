@@ -28,7 +28,7 @@ struct Vertex {
   wmax: f32,
   cAbs: f32,
   cRel: f32,
-  pad0: f32,
+  extra: f32,
   pad1: f32,
 };
 
@@ -86,4 +86,11 @@ fn sampleMaps(uv: vec2f) -> vec4f {
 
 fn barycentricCorner(corner: u32) -> vec3f {
   return vec3f(f32(corner == 0u), f32(corner == 1u), f32(corner == 2u));
+}
+
+// Target width (reference px) at a base point: R * lerp(wFront, wProfile, 1 - |v.front|).
+fn targetWidthPx(uv: vec2f, viewDirWorld: vec3f) -> f32 {
+  let m = sampleMaps(uv);
+  let headOn = abs(dot(viewDirWorld, normalize(cam.frontAxis)));
+  return max(m.r, 0.0) * max(mix(m.g, m.b, 1.0 - headOn), 0.0);
 }

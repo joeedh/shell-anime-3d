@@ -9,22 +9,32 @@ import pnWGSL from "./shaders/pn.wgsl";
 import { computeCurvature } from "../mesh/curvature";
 import type { CurvatureField } from "../mesh/curvature";
 import type { Mesh } from "../mesh/mesh";
+import { CompareMode, ReferencePass } from "./reference/reference";
 
 /** Bytes in the Camera uniform struct (common.wgsl). */
 const CAMERA_UNIFORM_SIZE = 336;
 export const DEPTH_FORMAT: GPUTextureFormat = "depth32float";
+/** The shell pass marks its line pixels here for the compare pass. */
+const MASK_FORMAT: GPUTextureFormat = "r8unorm";
 
 /** Per-canvas render targets, recreated when the canvas size changes. */
 interface Targets {
   width: number;
   height: number;
   depth: GPUTexture;
+  mask: GPUTexture;
+  refBase: GPUTexture;
+  refExit: GPUTexture;
 }
 
 /** Draws a scene into a viewport's canvas. */
 export class Renderer {
   meshBuffers = new MeshBuffers();
   paint = new PaintGPU();
+  reference = new ReferencePass();
+  /** Submit-to-completion time of the last measured frame (rough; includes queue latency). */
+  gpuMs = 0;
+  private timing = false;
   /** Set when painted widths changed; the next draw recomputes wmax for every vertex. */
   wmaxDirty = true;
   private wmaxUpload = -1;
@@ -73,7 +83,11 @@ export class Renderer {
       label: "base",
       layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
       vertex: { module, entryPoint: "vsBase" },
-      fragment: { module, entryPoint: "fsBase", targets: [{ format }] },
+      fragment: {
+        module,
+        entryPoint: "fsBase",
+        targets: [{ format }, { format: MASK_FORMAT, writeMask: 0 }],
+      },
       primitive: { topology: "triangle-list", cullMode: "back", frontFace: "ccw" },
       depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
     });
@@ -83,11 +97,17 @@ export class Renderer {
       label: "shell",
       layout: device.createPipelineLayout({ bindGroupLayouts: [this.layout] }),
       vertex: { module: shellModule, entryPoint: "vsShell" },
-      fragment: { module: shellModule, entryPoint: "fsShell", targets: [{ format }] },
+      fragment: {
+        module: shellModule,
+        entryPoint: "fsShell",
+        targets: [{ format }, { format: MASK_FORMAT }],
+      },
       // inverted hull: draw the back faces of the extruded shell
       primitive: { topology: "triangle-list", cullMode: "front", frontFace: "ccw" },
       depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: "less" },
     });
+
+    this.reference.init(this.layout, this.sampler, this.cameraBuffer, format);
   }
 
   private getTargets(ctx: GPUCanvasContext, width: number, height: number): Targets {
@@ -95,17 +115,24 @@ export class Renderer {
     if (t && t.width === width && t.height === height) {
       return t;
     }
-    t?.depth.destroy();
+    if (t) {
+      for (const tex of [t.depth, t.mask, t.refBase, t.refExit]) tex.destroy();
+    }
     const { device } = getGPU();
+    const tex = (label: string, format: GPUTextureFormat) =>
+      device.createTexture({
+        label,
+        size: [width, height],
+        format,
+        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+      });
     t = {
       width,
       height,
-      depth: device.createTexture({
-        label: "base depth",
-        size: [width, height],
-        format: DEPTH_FORMAT,
-        usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-      }),
+      depth: tex("base depth", DEPTH_FORMAT),
+      mask: tex("model mask", MASK_FORMAT),
+      refBase: tex("reference base depth", DEPTH_FORMAT),
+      refExit: tex("reference exit depth", DEPTH_FORMAT),
     };
     this.targets.set(ctx, t);
     return t;
@@ -183,15 +210,28 @@ export class Renderer {
     this.syncScene(scene);
     this.writeCamera(scene, width, height);
 
+    const settings = scene.settings;
+    const mode = settings.showCompare
+      ? CompareMode.COMPARE
+      : settings.showReference
+        ? CompareMode.REFERENCE
+        : CompareMode.OFF;
+    if (mode !== CompareMode.OFF) {
+      this.reference.sync(scene.mesh);
+    }
+
     const encoder = device.createCommandEncoder();
+    const colorView = ctx.getCurrentTexture().createView();
+    const maskView = targets.mask.createView();
     const pass = encoder.beginRenderPass({
       colorAttachments: [
         {
-          view: ctx.getCurrentTexture().createView(),
+          view: colorView,
           clearValue: { r: 0.72, g: 0.74, b: 0.78, a: 1 },
           loadOp: "clear",
           storeOp: "store",
         },
+        { view: maskView, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" },
       ],
       depthStencilAttachment: {
         view: targets.depth.createView(),
@@ -207,6 +247,31 @@ export class Renderer {
     pass.draw(this.meshBuffers.triCount * 3);
     pass.end();
 
+    let readback = false;
+    if (mode !== CompareMode.OFF) {
+      readback = this.reference.encode({
+        encoder,
+        color: colorView,
+        mask: maskView,
+        refBase: targets.refBase.createView(),
+        refExit: targets.refExit.createView(),
+        refBaseTexture: targets.refBase,
+        mapsTexture: this.paint.texture!,
+        mode,
+      });
+    }
+
     device.queue.submit([encoder.finish()]);
+    if (!this.timing) {
+      this.timing = true;
+      const t0 = performance.now();
+      device.queue.onSubmittedWorkDone().then(() => {
+        this.gpuMs = performance.now() - t0;
+        this.timing = false;
+      });
+    }
+    if (readback) {
+      this.reference.startReadback();
+    }
   }
 }
