@@ -1,0 +1,33 @@
+{
+  "name": "shell-anime-3d",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Test app for conservative shell outlines with analytic offset clipping",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "watch": "node tools/build.mjs --watch",
+    "start": "node tools/build.mjs && node tools/nw.mjs",
+    "nw": "node tools/nw.mjs",
+    "cdp": "node tools/cdp.mjs",
+    "test": "vitest run",
+    "typecheck": "tsgo --noEmit",
+    "lint": "lintrix src tests",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\""
+  },
+  "dependencies": {
+    "nstructjs": "link:./extern/nstructjs"
+  },
+  "devDependencies": {
+    "@pathtx/prettier": "3.10.0-dev",
+    "@types/node": "^26.6.6",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "@webgpu/types": "0.1.74",
+    "esbuild": "0.28.2",
+    "lintrix": "0.2.0",
+    "nw": "0.120.0-sdk",
+    "typescript": "6.0.2",
+    "vitest": "4.1.7"
+  }
+}

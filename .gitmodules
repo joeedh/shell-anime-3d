@@ -1,0 +1,6 @@
+[submodule "extern/nstructjs"]
+	path = extern/nstructjs
+	url = https://github.com/joeedh/STRUCT.git
+[submodule "extern/path.ux"]
+	path = extern/path.ux
+	url = https://github.com/joeedh/path.ux.git

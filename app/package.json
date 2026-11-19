@@ -1,0 +1,9 @@
+{
+  "name": "shell-anime-3d",
+  "main": "index.html",
+  "window": {
+    "width": 1400,
+    "height": 900,
+    "title": "Shell outline test"
+  }
+}

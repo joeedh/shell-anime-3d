@@ -411,7 +411,9 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-1. Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
+Status: 1 done.
+
+1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
 2. Mesh, primitives, camera, base render.
 3. Serialization, binary and JSON.

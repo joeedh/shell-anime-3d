@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Shell outline test</title>
+  <style>
+    body {
+      overflow: hidden;
+      padding: 0px;
+      margin: 0px;
+    }
+  </style>
+  <script type="text/plain" id="pathux-tag-prefix">
+pathux-
+  </script>
+  <script type="module">
+    // path.ux picks its platform layer when its modules evaluate, so this must come first.
+    window.haveNwjs = typeof nw !== "undefined";
+
+    window.addEventListener("load", async () => {
+      const app = await import("./dist/app.js");
+      await app.start();
+    });
+  </script>
+</head>
+<body>
+</body>
+</html>

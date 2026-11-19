@@ -1,0 +1,4 @@
+# Settings only. The app is a single package; never include extern/* here.
+allowBuilds:
+  esbuild: true
+  nw: true
