@@ -19,7 +19,9 @@ export function snapshotScene(scene: Scene): number[] {
 }
 
 export function restoreScene(data: number[]): Scene {
-  return nstructjs.readObject(new DataView(new Uint8Array(data).buffer), Scene) as Scene;
+  const scene = nstructjs.readObject(new DataView(new Uint8Array(data).buffer), Scene) as Scene;
+  scene.afterLoad();
+  return scene;
 }
 
 ToolOp.prototype.undoPre = function () {

@@ -4,7 +4,7 @@ import path from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      nstructjs: path.resolve(__dirname, "extern/nstructjs/build/nstructjs_es6.js"),
+      nstructjs: path.resolve(import.meta.dirname, "extern/nstructjs/build/nstructjs_es6.js"),
     },
   },
   test: {

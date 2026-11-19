@@ -16,6 +16,7 @@ import "../editors/screen";
 import "../editors/menu/menu";
 import "../editors/viewport/viewport";
 import "../editors/properties/properties";
+import "../mesh/mesh_ops";
 import { defineAPI } from "./api";
 import { ToolContext, ViewContext } from "./context";
 import { Scene } from "./scene";
