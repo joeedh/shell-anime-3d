@@ -14,7 +14,8 @@
     "typecheck": "tsgo --noEmit",
     "lint": "lintrix src tests",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"tools/**/*.mjs\"",
+    "rd": "node tools/rd.mjs"
   },
   "dependencies": {
     "nstructjs": "link:./extern/nstructjs"

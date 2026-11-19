@@ -10,7 +10,69 @@ took real effort to find, or when you learn a diagnostic technique worth reusing
 - **Fix:** what changed (commit hash if useful)
 - **How to spot it next time:** the check, log, or tool that reveals it
 
+## GPU debugging toolkit
+
+Strategies, roughly cheapest first:
+
+- **Compare pass.** Turn on Compare To Reference. Red pixels are missing from the model and
+  blue pixels are extra; the counts sit in the viewport's corner. The reference is ground
+  truth, so it finds wrong pixels without guessing where to look.
+- **Colour-coded experiments.** In a fragment shader, disable clipping (or a single test)
+  and write the quantity under suspicion as a colour, then `pnpm run cdp screenshot`. Good
+  for seeing a field over the whole image, such as walk hop counts or `dist / r`.
+- **CPU replays.** Copy GPU buffers back (`ReferencePass.debugRead()` is an example) and
+  replay the per-pixel rule in doubles in a CDP eval. If the CPU result is right and the GPU
+  result is wrong, suspect f32 precision (see "speckled holes" below).
+- **RenderDoc pixel debugging.** Steps the real shader for one pixel and reports its WGSL
+  locals by name:
+
+  ```bash
+  pnpm run start -- --renderdoc                          # captures every frame, ~9 MB each
+  pnpm run rd capture --setup "_appstate.scene.settings.clipModel = 2"
+  pnpm run rd actions                                    # event ids (base, shell, ...)
+  pnpm run rd pick 33 1046 140:160                       # render targets after event 33
+  pnpm run rd debug 33 1046 152 "pc.,pr,res.keep"        # locals at that pixel
+  ```
+
+  - Coordinates are render-target pixels: CSS pixels times `devicePixelRatio`.
+  - `debug` reports each local's last assignment, so a loop variable shows its final
+    iteration. For a mid-loop value, copy it into a new local or write it to an output.
+  - Integers and booleans print as integers (`res.keep = [1]`).
+  - Dawn's HLSL keeps WGSL names because of `disable_symbol_renaming`; nested struct values
+    can still appear under generated names such as `v_11.dist`.
+  - `rd capture` deletes every other per-frame capture in `.gpu-captures/`. Navigating the
+    view while launched with `--renderdoc` fills the disk quickly.
+
+- **GPU timing with Nsight Systems.** No setup in the app:
+
+  ```bash
+  nsys profile --trace=dx12 --duration=30 -o trace <nw.exe> app --force_high_performance_gpu
+  nsys export --type sqlite -o trace.sqlite trace.nsys-rep   # DX12_WORKLOAD: per-submit GPU time
+  ```
+
+  It follows Chromium's child processes on its own and finds Dawn in the GPU process. It
+  wants an administrator shell for its OS-level GPU-scheduling (`wddm`) and CPU traces.
+
+### Nsight Graphics (2026.4): not working yet
+
+- `ngfx-capture` injected into every NW.js process, but the app hung during startup and
+  never presented a frame. That matches NVIDIA's forum reports for Chromium's Dawn backend.
+- **`ngfx-capture` kills "interfering" applications** (it closed Steam) when its yes/no
+  prompt gets no answer. Always pass `--no-block-on-interfering-application`.
+- Nsight Graphics ships an MCP server, `ngfx-mcp.exe`, which has not been tried yet.
+
 ## Entries
+
+## WebGPU runs on the integrated GPU
+
+- **Symptom:** frame times several times slower than expected. Nsight tools see no GPU work
+  from the app.
+- **Cause:** on a hybrid laptop (Intel + RTX 5050 here), Chromium on Windows gives WebGPU the
+  integrated GPU and ignores `powerPreference: "high-performance"`.
+- **Fix:** `tools/nw.mjs` passes `--force_high_performance_gpu` unless run with `--igpu`.
+- **How to spot it next time:**
+  `node tools/cdp.mjs eval "(async () => (await navigator.gpu.requestAdapter()).info.vendor)()"`
+  prints `intel`.
 
 ### Editor or screen class "is not a function" at startup
 

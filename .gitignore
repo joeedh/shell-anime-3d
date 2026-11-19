@@ -2,3 +2,4 @@ node_modules/
 app/dist/
 .cache/
 *.log
+.gpu-captures/
