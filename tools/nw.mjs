@@ -50,7 +50,16 @@ if (!fs.existsSync(nwPath)) {
   process.exit(1);
 }
 
-const args = [appDir, `--remote-debugging-port=${port}`];
+// keep rendering and input alive when the window is occluded, so CDP automation works
+// while other windows cover it (Windows occlusion detection otherwise marks it hidden)
+const args = [
+  appDir,
+  `--remote-debugging-port=${port}`,
+  "--disable-features=CalculateNativeWinOcclusion",
+  "--disable-backgrounding-occluded-windows",
+  "--disable-renderer-backgrounding",
+  "--disable-background-timer-throttling",
+];
 if (devtools) {
   args.push("--auto-open-devtools-for-tabs");
 }

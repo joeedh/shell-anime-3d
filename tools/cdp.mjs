@@ -7,6 +7,9 @@
  *   node tools/cdp.mjs screenshot out.png
  *   node tools/cdp.mjs logs [seconds]          (console + exceptions after a reload)
  *   node tools/cdp.mjs reload
+ *   node tools/cdp.mjs drag x0 y0 x1 y1 [steps] [button] [modifiers]
+ *                                              (CSS px; button left|middle; modifiers bitmask)
+ *   node tools/cdp.mjs key <key>
  *   node tools/cdp.mjs close
  *
  * Options: --port=9222
@@ -116,6 +119,33 @@ async function main() {
       await send("Page.enable");
       await send("Page.reload", { ignoreCache: true });
       await new Promise((r) => setTimeout(r, seconds * 1000));
+      ws.close();
+      return;
+    }
+    case "drag": {
+      const { ws, send } = await connect();
+      const [x0, y0, x1, y1] = rest.slice(0, 4).map(Number);
+      const steps = parseInt(rest[4] ?? "10");
+      const button = rest[5] ?? "left";
+      const modifiers = parseInt(rest[6] ?? "0");
+      const buttons = button === "middle" ? 4 : 1;
+      const ev = (type, x, y, extra = {}) =>
+        send("Input.dispatchMouseEvent", { type, x, y, button, modifiers, ...extra });
+      await ev("mouseMoved", x0, y0, { button: "none" });
+      await ev("mousePressed", x0, y0, { clickCount: 1, buttons });
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        await ev("mouseMoved", x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, { buttons });
+        await new Promise((r) => setTimeout(r, 16));
+      }
+      await ev("mouseReleased", x1, y1, { clickCount: 1, buttons: 0 });
+      ws.close();
+      return;
+    }
+    case "key": {
+      const { ws, send } = await connect();
+      await send("Input.dispatchKeyEvent", { type: "keyDown", key: rest[0] });
+      await send("Input.dispatchKeyEvent", { type: "keyUp", key: rest[0] });
       ws.close();
       return;
     }

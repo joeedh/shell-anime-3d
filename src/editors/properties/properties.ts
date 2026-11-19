@@ -14,6 +14,18 @@ export class PropertiesEditor extends Editor {
     prim.prop("scene.pendingPrimitive.radius");
     prim.prop("scene.pendingPrimitive.radius2");
     prim.tool("mesh.set_primitive()");
+    prim.tool("mesh.unwrap()");
+
+    const brush = c.panel("Brush");
+    brush.prop("scene.toolMode");
+    brush.prop("scene.brush.mode");
+    brush.prop("scene.brush.channel");
+    brush.prop("scene.brush.value");
+    brush.prop("scene.brush.strength");
+    brush.prop("scene.brush.radius");
+    brush.prop("scene.brush.hardness");
+    brush.prop("scene.brush.spacing");
+    brush.prop("scene.brush.sculptStrength");
 
     const render = c.panel("Render");
     render.prop("scene.settings.clipModel");
@@ -21,6 +33,7 @@ export class PropertiesEditor extends Editor {
     render.prop("scene.settings.showCompare");
     render.prop("scene.settings.refHeight");
     render.prop("scene.settings.showWireframe");
+    render.prop("scene.settings.overlay");
     render.prop("scene.camera.ortho");
     render.prop("scene.camera.fovy");
 

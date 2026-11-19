@@ -17,6 +17,9 @@ import "../editors/menu/menu";
 import "../editors/viewport/viewport";
 import "../editors/properties/properties";
 import "../mesh/mesh_ops";
+import "../paint/paint_ops";
+import { TriBVH } from "../mesh/bvh";
+import type { Mesh } from "../mesh/mesh";
 import { defineAPI } from "./api";
 import { ToolContext, ViewContext } from "./context";
 import { Scene } from "./scene";
@@ -37,6 +40,7 @@ export class AppState {
   viewctx: ViewContext;
   toolctx: ToolContext;
   screen: AppScreen | undefined;
+  private bvhCache: { mesh?: Mesh; version: number; bvh?: TriBVH } = { version: -1 };
 
   constructor() {
     this.api = defineAPI();
@@ -53,6 +57,17 @@ export class AppState {
     }
     this.api.notifyChange();
     window.redraw_all();
+  }
+
+  /** BVH for a mesh, rebuilt when its geometry version changes. */
+  bvhFor(mesh: Mesh) {
+    const c = this.bvhCache;
+    if (c.mesh !== mesh || c.version !== mesh.geomVersion || !c.bvh) {
+      c.bvh = new TriBVH(mesh);
+      c.mesh = mesh;
+      c.version = mesh.geomVersion;
+    }
+    return c.bvh;
   }
 
   newScene() {

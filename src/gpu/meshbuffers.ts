@@ -13,7 +13,13 @@ export const TRI_STRIDE = 12;
 export class MeshBuffers {
   vertexBuffer: GPUBuffer | undefined;
   triBuffer: GPUBuffer | undefined;
+  /** CSR vertex -> triangles, for compute passes (wmax). */
+  vertTriStartBuffer: GPUBuffer | undefined;
+  vertTrisBuffer: GPUBuffer | undefined;
   triCount = 0;
+  vertCount = 0;
+  /** Bumped on every upload; per-vertex GPU-computed fields (wmax) must be refreshed after. */
+  uploadCount = 0;
   private mesh: Mesh | undefined;
   private geomVersion = -1;
 
@@ -88,6 +94,24 @@ export class MeshBuffers {
     }
     device.queue.writeBuffer(this.vertexBuffer, 0, vdata);
     device.queue.writeBuffer(this.triBuffer, 0, tbuf);
+
+    if (recreate || !this.vertTriStartBuffer) {
+      this.vertTriStartBuffer?.destroy();
+      this.vertTrisBuffer?.destroy();
+      const mk = (label: string, data: Uint32Array) => {
+        const b = device.createBuffer({
+          label,
+          size: Math.max(4, data.byteLength),
+          usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        });
+        device.queue.writeBuffer(b, 0, data);
+        return b;
+      };
+      this.vertTriStartBuffer = mk("vertTriStart", mesh.vertTriStart);
+      this.vertTrisBuffer = mk("vertTris", mesh.vertTris);
+    }
     this.triCount = nt;
+    this.vertCount = nv;
+    this.uploadCount++;
   }
 }

@@ -5,6 +5,7 @@ struct BaseOut {
   @location(0) world: vec3f,
   @location(1) nor: vec3f,
   @location(2) bary: vec3f,
+  @location(3) uv: vec2f,
 };
 
 @vertex
@@ -18,6 +19,7 @@ fn vsBase(@builtin(vertex_index) vi: u32) -> BaseOut {
   o.world = v.pos;
   o.nor = v.nor;
   o.bary = barycentricCorner(corner);
+  o.uv = triUV(tri, corner);
   return o;
 }
 
@@ -38,6 +40,17 @@ fn fsBase(i: BaseOut) -> @location(0) vec4f {
     shade = 0.84;
   }
   var col = vec3f(0.96, 0.86, 0.78) * shade;
+
+  if (cam.overlay > 0.5) {
+    let m = sampleMaps(i.uv);
+    var x = m.r / 12.0;
+    if (cam.overlay > 1.5) { x = m.g * 0.5; }
+    if (cam.overlay > 2.5) { x = m.b * 0.5; }
+    x = clamp(x, 0.0, 1.0);
+    // blue -> green -> yellow -> red
+    let heat = clamp(vec3f(x * 2.0 - 0.5, 1.5 - abs(x * 2.0 - 1.0) * 1.5, 1.0 - x * 2.0), vec3f(0.0), vec3f(1.0));
+    col = mix(col, heat * shade, 0.75);
+  }
 
   if (cam.showWire > 0.5) {
     let fw = fwidth(i.bary);

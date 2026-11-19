@@ -1,11 +1,12 @@
 import { getGPU } from "../gpu/device";
 import { MeshBuffers } from "../gpu/meshbuffers";
+import { PaintGPU } from "../paint/paint_gpu";
 import type { Scene } from "../core/scene";
 import commonWGSL from "./shaders/common.wgsl";
 import baseWGSL from "./shaders/base.wgsl";
 
 /** Bytes in the Camera uniform struct (common.wgsl). */
-const CAMERA_UNIFORM_SIZE = 320;
+const CAMERA_UNIFORM_SIZE = 336;
 export const DEPTH_FORMAT: GPUTextureFormat = "depth32float";
 
 /** Per-canvas render targets, recreated when the canvas size changes. */
@@ -18,11 +19,16 @@ interface Targets {
 /** Draws a scene into a viewport's canvas. */
 export class Renderer {
   meshBuffers = new MeshBuffers();
+  paint = new PaintGPU();
+  /** Set when painted widths changed; the next draw recomputes wmax for every vertex. */
+  wmaxDirty = true;
+  private wmaxUpload = -1;
+  private sampler: GPUSampler | undefined;
   private cameraBuffer: GPUBuffer | undefined;
   private layout: GPUBindGroupLayout | undefined;
   private basePipeline: GPURenderPipeline | undefined;
   private bindGroup: GPUBindGroup | undefined;
-  private bindGroupKey: [GPUBuffer?, GPUBuffer?] = [];
+  private bindGroupKey: unknown[] = [];
   private targets = new WeakMap<GPUCanvasContext, Targets>();
 
   private init() {
@@ -42,7 +48,15 @@ export class Renderer {
         { binding: 0, visibility: vis, buffer: { type: "uniform" } },
         { binding: 1, visibility: vis, buffer: { type: "read-only-storage" } },
         { binding: 2, visibility: vis, buffer: { type: "read-only-storage" } },
+        { binding: 3, visibility: vis, texture: { sampleType: "float" } },
+        { binding: 4, visibility: vis, sampler: { type: "filtering" } },
       ],
+    });
+    this.sampler = device.createSampler({
+      magFilter: "linear",
+      minFilter: "linear",
+      addressModeU: "clamp-to-edge",
+      addressModeV: "clamp-to-edge",
     });
 
     const module = device.createShaderModule({ label: "base", code: commonWGSL + baseWGSL });
@@ -96,12 +110,14 @@ export class Renderer {
     data[75] = scene.settings.clipModel;
     data.set(scene.settings.lineColor, 76);
     data[79] = scene.settings.showWireframe ? 1 : 0;
+    data[80] = scene.settings.overlay;
     device.queue.writeBuffer(this.cameraBuffer!, 0, data);
   }
 
   private getBindGroup() {
     const mb = this.meshBuffers;
-    if (this.bindGroup && this.bindGroupKey[0] === mb.vertexBuffer && this.bindGroupKey[1] === mb.triBuffer) {
+    const key = [mb.vertexBuffer, mb.triBuffer, this.paint.texture];
+    if (this.bindGroup && key.every((k, i) => k === this.bindGroupKey[i])) {
       return this.bindGroup;
     }
     const { device } = getGPU();
@@ -111,10 +127,24 @@ export class Renderer {
         { binding: 0, resource: { buffer: this.cameraBuffer! } },
         { binding: 1, resource: { buffer: mb.vertexBuffer! } },
         { binding: 2, resource: { buffer: mb.triBuffer! } },
+        { binding: 3, resource: this.paint.texture!.createView() },
+        { binding: 4, resource: this.sampler! },
       ],
     });
-    this.bindGroupKey = [mb.vertexBuffer, mb.triBuffer];
+    this.bindGroupKey = key;
     return this.bindGroup;
+  }
+
+  /** Brings GPU copies of the mesh and maps up to date; also used by tools before a stroke. */
+  syncScene(scene: Scene) {
+    this.paint.sync(scene.maps);
+    this.meshBuffers.sync(scene.mesh);
+    this.paint.syncUVs(scene.mesh);
+    if (this.wmaxDirty || this.wmaxUpload !== this.meshBuffers.uploadCount) {
+      this.paint.computeWmax(this.meshBuffers);
+      this.wmaxDirty = false;
+      this.wmaxUpload = this.meshBuffers.uploadCount;
+    }
   }
 
   draw(ctx: GPUCanvasContext, scene: Scene, width: number, height: number) {
@@ -122,7 +152,7 @@ export class Renderer {
     const { device } = getGPU();
     const targets = this.getTargets(ctx, width, height);
 
-    this.meshBuffers.sync(scene.mesh);
+    this.syncScene(scene);
     this.writeCamera(scene, width, height);
 
     const encoder = device.createCommandEncoder();

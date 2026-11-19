@@ -23,3 +23,16 @@ took real effort to find, or when you learn a diagnostic technique worth reusing
   as well as for their bindings. `src/core/app.ts` keeps a block of these.
 - **How to spot it next time:** `grep -n "register(ClassName)" app/dist/app.js` finds
   nothing. Or, in the page, `customElements.get("<tag>")` is undefined.
+
+### CDP input events hang and the app stops redrawing
+
+- **Symptom:** `node tools/cdp.mjs drag ...` never returns; `Input.dispatchMouseEvent` gets
+  no response. Screenshots still work, but `requestAnimationFrame` redraws don't happen.
+- **Cause:** Windows occlusion detection marked the NW.js window hidden
+  (`document.visibilityState === "hidden"`) while other windows covered it. Chromium then
+  throttles rendering and input.
+- **Fix:** `tools/nw.mjs` launches with `--disable-features=CalculateNativeWinOcclusion`,
+  `--disable-backgrounding-occluded-windows`, `--disable-renderer-backgrounding` and
+  `--disable-background-timer-throttling`.
+- **How to spot it next time:**
+  `node tools/cdp.mjs eval "document.visibilityState"` prints `hidden`.

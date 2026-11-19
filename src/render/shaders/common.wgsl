@@ -15,6 +15,10 @@ struct Camera {
   clipModel: f32,
   lineColor: vec3f,
   showWire: f32,
+  overlay: f32,
+  misc0: f32,
+  misc1: f32,
+  misc2: f32,
 };
 
 struct Vertex {
@@ -40,6 +44,9 @@ struct Tri {
 @group(0) @binding(0) var<uniform> cam: Camera;
 @group(0) @binding(1) var<storage, read> verts: array<Vertex>;
 @group(0) @binding(2) var<storage, read> tris: array<Tri>;
+// painted maps: r = width (reference px), g = wFront, b = wProfile
+@group(0) @binding(3) var maps: texture_2d<f32>;
+@group(0) @binding(4) var mapSampler: sampler;
 
 fn triVertex(tri: u32, corner: u32) -> Vertex {
   return verts[tris[tri].idx[corner]];
@@ -64,6 +71,17 @@ fn viewRayDir(p: vec3f) -> vec3f {
     return -normalize(vec3f(cam.view[0].z, cam.view[1].z, cam.view[2].z));
   }
   return normalize(p - cam.eye);
+}
+
+fn triUV(tri: u32, corner: u32) -> vec2f {
+  let t = tris[tri];
+  if (corner == 1u) { return t.uv1; }
+  if (corner == 2u) { return t.uv2; }
+  return t.uv0;
+}
+
+fn sampleMaps(uv: vec2f) -> vec4f {
+  return textureSampleLevel(maps, mapSampler, uv, 0.0);
 }
 
 fn barycentricCorner(corner: u32) -> vec3f {

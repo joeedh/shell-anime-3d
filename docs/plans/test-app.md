@@ -411,13 +411,13 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-Status: 1-3 done.
+Status: 1-4 done.
 
 1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
 2. [done] Mesh, primitives (capsule replaces cylinder, so the reference can project onto it), camera, base render.
 3. [done] Serialization, binary and JSON (native dialogs not yet clicked through by hand).
-4. UV unwrap, paint textures, GPU painting, tile undo, `wmax` compute.
+4. [done] UV unwrap, paint textures, GPU painting, tile undo, `wmax` compute. Curvature and butterfly modules landed early.
 5. Shell pass with the width model and the raw-hull baseline; curvature and the sphere model.
 6. PN-patch model.
 7. Butterfly reference, reference and compare passes, with stats.
@@ -498,3 +498,86 @@ scripts were scratch files and were not kept.
 - The sphere model's isotropy error on anisotropic regions.
 - PN's closest-point width approximation.
 - Undershoot when the shell extrudes much further than r.
+
+## Pressure-test results (round 2, 2026-11-19)
+
+A second fresh subagent targeted the reference, the clip models, the solver and wmax. These
+results override the sections above where they conflict.
+
+**Broke, and how the plan changed:**
+
+- **Fragment attribution (affects every model).**
+  - The back-facing shell fragment covering a line pixel comes from a triangle about
+    ψ ≈ √(2(e − s)/ρ) behind the contour, which is 2–5 edges on dense meshes when
+    e = 2–4r.
+  - PN extrapolation (even to −3) then discards 50–97% of the true line at 64–256 segments.
+  - Change: **PN walks patches.** When Newton leaves the triangle, it hops to the edge
+    neighbour's patch, using a per-triangle edge-adjacency buffer, and continues there.
+    A walk takes at most 8 hops.
+  - Change: **r is sampled at the model's closest point.** For PN that is the walked point.
+    For the sphere model it is still the source fragment's base point: a known error for
+    painted tapers that the heatmap will show.
+  - Add a test at 128+ segments with e = 2r.
+- **Depth at inner contours.**
+  - The shell's back-face depth is about √(2ρe) behind the silhouette plane, but the true
+    exit is √(2ρr) behind it. For e > r, a surface sitting in that window hides the line.
+  - Raising c_abs/c_rel makes this worse.
+  - Change: **the shell fragment writes `frag_depth`** from the clip model's exit point,
+    the far intersection of the ray with the model's offset surface.
+- **Reference false exits.**
+  - First source: a grazing ray leaves through a sampling dimple between balls.
+  - Second source: in hyperbolic regions, the containing ball can lie outside the sampled
+    band.
+  - Changes, validated at 5 extra and 21 missing pixels out of 5698:
+    - Also discard a far point F if F + 2h·D is inside another ball.
+    - Fill the containment hash from a band wider than the impostor band (cutoff + about
+      2rκ_max).
+    - Inflating the containment radius instead erases the real line, so don't.
+- **Solver.**
+  - Point sampling misses the worst faceting deficit, which is in the face-normal
+    direction: 6 points capture only 75% of it.
+  - "Reach from the base triangle under p" is ill-defined (see attribution above).
+  - Changes:
+    - Define reach as the support of the shell's projection: max over nearby vertices of
+      (x_i + e_i·N_i)·n⊥.
+    - Always sample each face's normal direction.
+    - Divide the faceting term by the projection factor N_i·n before storing it as `c_abs`.
+
+**Risky items folded in:**
+
+- **Sphere model:**
+  - Where H ≤ 0 it degenerates to the raw hull. That is expected, and the heatmap will show
+    it.
+  - Use ε = 5e-5 on |u4| in view space; that was measured as the f32-safe threshold.
+- **The 16-segment sphere test** uses estimated N and H, not analytic ones. Expect about a
+  1 px contour shift at 16 segments and much less at 32+.
+- **Impostor quads:** sized from the exact projected-sphere bounds. A screen-aligned r/z
+  quad under-covers by up to 1.37× at the corners.
+- **Sample cost:**
+  - h has a floor of 0.5 px.
+  - The hash has one level per r class (so cost doesn't scale with r_max/r_min squared).
+  - The sag is h²/(4r) on a square grid, not h²/(8r).
+- **wmax:** per-triangle bounding boxes with 1 texel of slack (already the case). Painted
+  values are clamped to at least 0 where read.
+
+**Open decision (user):**
+
+- Where two sheets of the surface come within r of each other, union-of-balls ("the line
+  merges") and per-sheet hulls ("each sheet keeps its own line") disagree.
+- They differed on 20–60% of the band in a torso-over-arm test.
+- Options:
+  - limit containment to geodesic neighbours (per-sheet)
+  - add an "ambiguous" class to the compare pass
+  - accept the union.
+- Until decided: the union, with ambiguous pixels flagged if that is cheap.
+
+**Survived:**
+
+- The first-interval-exit equivalence (given the full ball set).
+- Edge-duplicate samples (exactly one survives).
+- The algebraic-sphere Pratt norm (|N|² = 1 per vertex; interpolated 0.88–1, never
+  imaginary).
+- Interpolating in view space is valid.
+- f32 thresholds at the stated ε.
+- The 1-ring wmax bound.
+- Perspective handling in the per-pixel tests.

@@ -3,6 +3,9 @@ import { Editor } from "../editor_base";
 import { getGPU } from "../../gpu/device";
 import { ViewMode, ViewNavigateOp } from "./view_ops";
 import type { Camera } from "../../core/camera";
+import { invert, transformPoint } from "../../math/mat4";
+import { PaintStrokeOp } from "../../paint/paint_ops";
+import { ToolMode } from "../../paint/brush";
 
 /**
  * 3D view: a WebGPU canvas behind the area's header.
@@ -34,6 +37,34 @@ export class ViewportEditor extends Editor {
     return _appstate.scene.camera;
   }
 
+  /** World-space ray through a client (CSS pixel) position. */
+  rayFromClient(x: number, y: number) {
+    const [w, h] = this.size ?? [1, 1];
+    const [px, py] = this.pos ?? [0, 0];
+    const nx = ((x - px) / w) * 2 - 1;
+    const ny = 1 - ((y - py) / h) * 2;
+    const inv = invert(this.sceneCamera().matrices(w / h).viewProj);
+    const a = transformPoint(inv, [nx, ny, 0]);
+    const b = transformPoint(inv, [nx, ny, 1]);
+    const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const l = Math.hypot(d[0], d[1], d[2]) || 1;
+    return { origin: [a[0], a[1], a[2]], dir: [d[0] / l, d[1] / l, d[2] / l] };
+  }
+
+  /** World size of one CSS pixel at a world point. */
+  worldPerCssPixel(p: ArrayLike<number>) {
+    const cam = this.sceneCamera();
+    const h = this.size?.[1] ?? 1;
+    if (cam.ortho) {
+      return (2 * cam.halfHeightAtTarget()) / h;
+    }
+    const e = cam.eye();
+    const f = [cam.target[0] - e[0], cam.target[1] - e[1], cam.target[2] - e[2]];
+    const fl = Math.hypot(f[0], f[1], f[2]) || 1;
+    const depth = ((p[0] - e[0]) * f[0] + (p[1] - e[1]) * f[1] + (p[2] - e[2]) * f[2]) / fl;
+    return (2 * depth * Math.tan((cam.fovy * Math.PI) / 360)) / h;
+  }
+
   /** True if the event landed on the canvas rather than on the header or a widget. */
   private isCanvasEvent(e: MouseEvent) {
     const screen = this.ctx?.screen;
@@ -46,13 +77,26 @@ export class ViewportEditor extends Editor {
     if (!this.isCanvasEvent(e)) return;
 
     const navigate = e.button === 1 || (e.button === 0 && e.altKey);
-    if (!navigate) return;
+    if (!navigate) {
+      if (e.button === 0) this.startStroke(e);
+      return;
+    }
 
     e.preventDefault();
     const mode = e.shiftKey ? ViewMode.PAN : e.ctrlKey ? ViewMode.ZOOM : ViewMode.ORBIT;
 
     this.push_ctx_active();
     void this.ctx.toolstack.execTool(this.ctx, new ViewNavigateOp(this, mode, e), e);
+    this.pop_ctx_active();
+  }
+
+  private startStroke(e: PointerEvent) {
+    const mode = _appstate.scene.toolMode;
+    if (mode !== ToolMode.PAINT) return;
+    e.preventDefault();
+    _appstate.renderer.syncScene(_appstate.scene);
+    this.push_ctx_active();
+    void this.ctx.toolstack.execTool(this.ctx, new PaintStrokeOp(this, e), e);
     this.pop_ctx_active();
   }
 

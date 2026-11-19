@@ -57,6 +57,8 @@ export class Mesh {
   isAnalytic = false;
   /** Bumped on any geometry change, so GPU buffers and caches know to refresh. */
   geomVersion = 0;
+  /** Bumped when UVs change (unwrap); also a geometry change for the GPU buffers. */
+  uvVersion = 0;
 
   // derived
   normals = new Float32Array(0);
@@ -89,6 +91,13 @@ export class Mesh {
   rebuildDerived() {
     this.buildAdjacency();
     this.computeNormals();
+    this.geomVersion++;
+    this.uvVersion++;
+  }
+
+  /** Call after rewriting `uvs` (the unwrapper does not bump versions itself). */
+  markUVsChanged() {
+    this.uvVersion++;
     this.geomVersion++;
   }
 
