@@ -26,6 +26,8 @@ import { ViewportEditor } from "../editors/viewport/viewport";
 import { PropertiesEditor } from "../editors/properties/properties";
 import { Renderer } from "../render/renderer";
 import { initGPU } from "../gpu/device";
+import { nodeFs, pickOpenPath, pickSavePath } from "./platform";
+import { readSceneAuto, writeSceneBinary, writeSceneJSON } from "./fileio";
 
 export class AppState {
   toolstack = new ToolStack();
@@ -57,12 +59,41 @@ export class AppState {
     this.setScene(new Scene(), true);
   }
 
-  async openSceneDialog() {
-    this.viewctx.report("Open is not implemented yet");
+  loadSceneFile(path: string) {
+    const fs = nodeFs();
+    if (!fs) throw new Error("File access needs NW.js");
+    this.setScene(readSceneAuto(fs.readFileSync(path)), true);
   }
 
-  async saveSceneDialog(_format: "binary" | "json") {
-    this.viewctx.report("Save is not implemented yet");
+  saveSceneFile(path: string, format: "binary" | "json") {
+    const fs = nodeFs();
+    if (!fs) throw new Error("File access needs NW.js");
+    const data = format === "json" ? writeSceneJSON(this.scene) : writeSceneBinary(this.scene);
+    fs.writeFileSync(path, data);
+  }
+
+  async openSceneDialog() {
+    const path = await pickOpenPath(".sa3d,.json");
+    if (!path) return;
+    try {
+      this.loadSceneFile(path);
+    } catch (error) {
+      console.error(error);
+      this.viewctx.report(`Could not open ${path}: ${(error as Error).message}`, "red");
+    }
+  }
+
+  async saveSceneDialog(format: "binary" | "json") {
+    const name = format === "json" ? "scene.sa3d.json" : "scene.sa3d";
+    const path = await pickSavePath(name, format === "json" ? ".json" : ".sa3d");
+    if (!path) return;
+    try {
+      this.saveSceneFile(path, format);
+      this.viewctx.report(`Saved ${path}`, "green");
+    } catch (error) {
+      console.error(error);
+      this.viewctx.report(`Could not save ${path}: ${(error as Error).message}`, "red");
+    }
   }
 
   genScreen() {

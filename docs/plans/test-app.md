@@ -411,12 +411,12 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-Status: 1-2 done.
+Status: 1-3 done.
 
 1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
 2. [done] Mesh, primitives (capsule replaces cylinder, so the reference can project onto it), camera, base render.
-3. Serialization, binary and JSON.
+3. [done] Serialization, binary and JSON (native dialogs not yet clicked through by hand).
 4. UV unwrap, paint textures, GPU painting, tile undo, `wmax` compute.
 5. Shell pass with the width model and the raw-hull baseline; curvature and the sphere model.
 6. PN-patch model.
