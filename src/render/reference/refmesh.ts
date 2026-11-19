@@ -12,6 +12,8 @@ export interface ReferenceMesh {
   /** Largest |principal curvature| per vertex, for the near-contour band test. */
   kmax: Float32Array;
   levels: number;
+  /** Base-mesh triangle each refined triangle came from. */
+  parentTri: Uint32Array;
 }
 
 /** Number of butterfly levels for a base mesh: up to 3, capped by `REF_MAX_TRIS`. */
@@ -26,8 +28,11 @@ export function referenceLevels(triCount: number) {
  * subdivision (interpolating, so it doesn't shrink), projected onto the true surface for an
  * unsculpted analytic primitive. UVs are linear within each original triangle.
  */
-export function buildReferenceMesh(src: Mesh): ReferenceMesh {
-  const levels = referenceLevels(src.triCount);
+export function buildReferenceMesh(
+  src: Mesh,
+  opts: { levels?: number; curvature?: boolean } = {},
+): ReferenceMesh {
+  const levels = Math.min(opts.levels ?? REF_MAX_LEVELS, referenceLevels(src.triCount));
   const sub = butterflySubdivide(src, levels);
   const pos = sub.positions;
   if (src.isAnalytic) {
@@ -42,10 +47,12 @@ export function buildReferenceMesh(src: Mesh): ReferenceMesh {
   mesh.uvs = Float32Array.from(sub.uvs);
   mesh.markUVsChanged();
 
-  const curv = computeCurvature(mesh);
   const kmax = new Float32Array(mesh.vertCount);
-  for (let v = 0; v < kmax.length; v++) {
-    kmax[v] = Math.max(Math.abs(curv.k1[v]), Math.abs(curv.k2[v]));
+  if (opts.curvature ?? true) {
+    const curv = computeCurvature(mesh);
+    for (let v = 0; v < kmax.length; v++) {
+      kmax[v] = Math.max(Math.abs(curv.k1[v]), Math.abs(curv.k2[v]));
+    }
   }
-  return { mesh, kmax, levels };
+  return { mesh, kmax, levels, parentTri: sub.parentTri };
 }

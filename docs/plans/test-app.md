@@ -411,7 +411,7 @@ Passes, in order:
 
 ## Milestones (each one commits)
 
-Status: 1-7 done.
+Status: 1-8 done.
 
 1. [done] Scaffold: submodules, pnpm, esbuild, NW.js launcher, CDP tool, lint/format/tests, and a
    path.ux screen whose viewport clears a WebGPU canvas.
@@ -456,7 +456,37 @@ Status: 1-7 done.
      mesh's silhouette, which the model draws on and the reference does not.
    - Without a margin the model misses the outer edge between vertices: the faceted shell
      falls inside R + r there. That is the deficit M8's correction map targets.
-8. Correction-map solver.
+8. [done] Correction-map solver (`src/solver/correction.ts`, Mesh panel buttons).
+   - Reach is measured exactly, not with the vertex support function: the extruded
+     triangles around the sample are projected onto the (contour tangent, n) plane and
+     cut by the line through p. The support function overstates reach between vertices,
+     which is exactly where the faceting deficit is.
+   - Sample points are the vertices of a 2-level butterfly refinement (about 8 per base
+     triangle) with 8 views each. That is denser than "6 points + the face normal", and the
+     points near each face's center cover the face-normal case.
+   - It is solved at unit width, so `c_rel` bounds every painted width (wmax is a maximum
+     over each vertex's triangles), and painting never makes the map stale. `c_rel` takes
+     the largest need over widths of 1/4, 1/2 and 1 edge, because a single test width left
+     a residual at the torus's inner ring.
+   - Deviation: it runs synchronously in the tool op (0.2-1.6 s on 200-2300 triangles),
+     not in a worker.
+   - Stale flag: `mesh.correctionStale` (geometry changed since the solve), for M9.
+   - Measured, pixels both / missing / extra, raw hull | sphere | PN:
+
+     | mesh | before solve | after solve |
+     | --- | --- | --- |
+     | UV sphere, 960 tris | 8505/12098/11982 \| 8505/12098/11982 \| 8489/12114/13925 | 20603/0/26309 \| 20478/125/12957 \| 20565/38/14772 |
+     | torus, 2304 | 15759/3758/3740 \| 14525/4992/3710 \| 15764/3753/4738 | 19474/43/10746 \| 15330/4187/3996 \| 19472/45/4924 |
+     | capsule, 1984 | 14369/4018/4007 \| 14367/4020/4007 \| 14369/4018/4890 | 18387/0/9082 \| 18361/26/4725 \| 18382/5/5067 |
+     | cube, 192 | 5995/11522/10031 \| 2728/14789/11203 \| 5873/11644/20784 | 17363/154/202229 \| 10248/7269/71796 \| 11153/6364/37110 |
+
+   - Findings:
+     - The raw hull's misses drop to about zero everywhere, so the shell is conservative.
+     - The sphere model still misses 4187 pixels on the torus: one isotropic sphere cannot
+       follow two very different principal curvatures. PN misses 45.
+     - On the cube, both models miss 6-7k pixels against the butterfly reference. Butterfly
+       and PN smooth a cube's sharp edges differently, so "the smooth surface" is ambiguous
+       there.
 9. Sculpt brushes.
 
 ## Pressure-test results (round 1, 2026-11-19)

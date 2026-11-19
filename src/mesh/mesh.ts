@@ -59,6 +59,10 @@ export class Mesh {
   geomVersion = 0;
   /** Bumped when UVs change (unwrap); also a geometry change for the GPU buffers. */
   uvVersion = 0;
+  /** Bumped when cAbs/cRel change, so the GPU copy refreshes without a geometry rebuild. */
+  corrVersion = 0;
+  /** geomVersion when the correction map was last solved, or -1 if never. */
+  corrSolvedAt = -1;
 
   // derived
   normals = new Float32Array(0);
@@ -93,6 +97,16 @@ export class Mesh {
     this.computeNormals();
     this.geomVersion++;
     this.uvVersion++;
+  }
+
+  /** Call after rewriting `cAbs`/`cRel`. */
+  markCorrectionChanged() {
+    this.corrVersion++;
+  }
+
+  /** True if the geometry changed since the correction map was solved. */
+  get correctionStale() {
+    return this.corrSolvedAt >= 0 && this.corrSolvedAt !== this.geomVersion;
   }
 
   /** Call after rewriting `uvs` (the unwrapper does not bump versions itself). */

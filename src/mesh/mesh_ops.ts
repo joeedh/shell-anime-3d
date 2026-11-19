@@ -3,6 +3,7 @@ import { Mesh } from "./mesh";
 import { makePrimitive } from "./primitives";
 import { unwrapMesh } from "../uv/unwrap";
 import type { AppContext } from "../core/context";
+import { solveCorrection } from "../solver/correction";
 
 const ToolOpBase = ToolOp as unknown as new () => ToolOp<{}, {}, AppContext>;
 
@@ -89,3 +90,58 @@ export class UnwrapOp extends MeshResetOp {
   }
 }
 ToolOp.register(UnwrapOp as unknown as Parameters<typeof ToolOp.register>[0]);
+
+/** Solves the correction map (c_abs, c_rel) for the current geometry; see src/solver. */
+export class SolveCorrectionOp extends ToolOpBase {
+  static tooldef() {
+    return {
+      uiname: "Solve Correction",
+      toolpath: "mesh.solve_correction",
+      description: "Make the shell reach the smooth contour plus the line width from every view",
+      inputs: {},
+      outputs: {},
+    };
+  }
+
+  exec(ctx: AppContext) {
+    const mesh = ctx.scene.mesh;
+    const res = solveCorrection(mesh);
+    mesh.cAbs = res.cAbs;
+    mesh.cRel = res.cRel;
+    mesh.corrSolvedAt = mesh.geomVersion;
+    mesh.markCorrectionChanged();
+    const maxAbs = res.cAbs.reduce((a, b) => Math.max(a, b), 0);
+    const maxRel = res.cRel.reduce((a, b) => Math.max(a, b), 0);
+    // the tool context is a locked proxy without report(); the view context has it
+    _appstate.viewctx.report(
+      `Solved in ${res.ms.toFixed(0)} ms: max c_abs ${maxAbs.toFixed(4)}, max c_rel ${maxRel.toFixed(3)}, ` +
+        `residual ${(res.residual * 100).toFixed(2)}% of an edge`,
+      res.failing > 0 ? "orange" : "green",
+    );
+    window.redraw_all();
+  }
+}
+ToolOp.register(SolveCorrectionOp as unknown as Parameters<typeof ToolOp.register>[0]);
+
+/** Zeroes the correction map, leaving the raw conservative shell. */
+export class ClearCorrectionOp extends ToolOpBase {
+  static tooldef() {
+    return {
+      uiname: "Clear Correction",
+      toolpath: "mesh.clear_correction",
+      description: "Zero c_abs and c_rel",
+      inputs: {},
+      outputs: {},
+    };
+  }
+
+  exec(ctx: AppContext) {
+    const mesh = ctx.scene.mesh;
+    mesh.cAbs = new Float32Array(mesh.vertCount);
+    mesh.cRel = new Float32Array(mesh.vertCount);
+    mesh.corrSolvedAt = -1;
+    mesh.markCorrectionChanged();
+    window.redraw_all();
+  }
+}
+ToolOp.register(ClearCorrectionOp as unknown as Parameters<typeof ToolOp.register>[0]);

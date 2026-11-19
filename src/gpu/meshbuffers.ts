@@ -30,6 +30,7 @@ export class MeshBuffers {
   uploadCount = 0;
   private mesh: Mesh | undefined;
   private geomVersion = -1;
+  private corrVersion = -1;
 
   /** Per-vertex values the renderer owns (curvature, conservative width), set before sync. */
   curvatureH: Float32Array | undefined;
@@ -43,8 +44,10 @@ export class MeshBuffers {
   /** Re-uploads if the mesh object or its geometry version changed. */
   sync(mesh: Mesh) {
     if (mesh === this.mesh && mesh.geomVersion === this.geomVersion) {
+      if (mesh.corrVersion !== this.corrVersion) this.uploadCorrection(mesh);
       return;
     }
+    this.corrVersion = mesh.corrVersion;
     const sameTopology = mesh === this.mesh && this.triCount === mesh.triCount;
     this.mesh = mesh;
     this.geomVersion = mesh.geomVersion;
@@ -72,6 +75,15 @@ export class MeshBuffers {
       iv[o + 42] = nb[t * 3 + 2];
     }
     return f;
+  }
+
+  /**
+   * Re-uploads after a correction-map change. A full upload is cheap at these sizes, and it
+   * bumps `uploadCount` so the GPU-written wmax gets recomputed rather than clobbered.
+   */
+  private uploadCorrection(mesh: Mesh) {
+    this.corrVersion = mesh.corrVersion;
+    this.upload(mesh, false);
   }
 
   /** Forces the next sync to upload, e.g. after per-vertex inputs changed. */
