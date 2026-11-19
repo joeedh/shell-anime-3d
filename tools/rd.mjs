@@ -7,8 +7,8 @@
  *       (default .gpu-captures/latest.rdc) and delete the other per-frame captures
  *   node tools/rd.mjs actions [file.rdc]
  *       list draws, dispatches, clears, copies and presents with their event ids
- *   node tools/rd.mjs pick <eid> <x> <y|y0:y1> [file.rdc]
- *       render-target values after event <eid> at a pixel or a column range
+ *   node tools/rd.mjs pick <eid> <x|x0:x1> <y|y0:y1> [file.rdc]
+ *       render-target values after event <eid> at a pixel or a block of pixels
  *   node tools/rd.mjs debug <eid> <x> <y> [filter,filter...] [file.rdc]
  *       step the pixel shader for the last fragment at (x, y) in event <eid> and print the
  *       final value of each source-level local (names come from Dawn's HLSL, which keeps

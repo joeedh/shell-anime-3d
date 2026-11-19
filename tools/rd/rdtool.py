@@ -4,7 +4,7 @@
 #   RD_CMD    actions | pick | debug
 #   RD_CAP    capture file
 #   RD_EID    event id (pick, debug)
-#   RD_X, RD_Y  pixel; RD_Y may be a range "y0:y1" for pick
+#   RD_X, RD_Y  pixel; for pick either may be a range "a:b"
 #   RD_FILTER   comma-separated substrings of local-variable names to report (debug)
 #   RD_OUT    result file (plain text)
 import os
@@ -49,10 +49,10 @@ def actions(ctrl):
     walk(ctrl.GetRootActions(), 0)
 
 
-def pick(ctrl, eid, x, ys):
+def pick(ctrl, eid, xs, ys):
     ctrl.SetFrameEvent(eid, True)
     targets = ctrl.GetPipelineState().GetOutputTargets()
-    for y in ys:
+    for x, y in ((x, y) for x in xs for y in ys):
         row = []
         for i, t in enumerate(targets):
             if t.resource == rd.ResourceId.Null():
@@ -109,13 +109,13 @@ try:
     if cmd == "actions":
         actions(ctrl)
     elif cmd == "pick":
-        ys = os.environ["RD_Y"]
-        if ":" in ys:
-            a, b = (int(s) for s in ys.split(":"))
-            yr = range(a, b)
-        else:
-            yr = [int(ys)]
-        pick(ctrl, int(os.environ["RD_EID"]), int(os.environ["RD_X"]), yr)
+        def span(text):
+            if ":" in text:
+                a, b = (int(s) for s in text.split(":"))
+                return range(a, b)
+            return [int(text)]
+
+        pick(ctrl, int(os.environ["RD_EID"]), span(os.environ["RD_X"]), span(os.environ["RD_Y"]))
     elif cmd == "debug":
         filters = [f for f in os.environ.get("RD_FILTER", "").split(",") if f]
         debug(ctrl, int(os.environ["RD_EID"]), int(os.environ["RD_X"]), int(os.environ["RD_Y"]), filters)
