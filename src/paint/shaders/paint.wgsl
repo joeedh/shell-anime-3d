@@ -29,7 +29,7 @@ struct Dab {
   hardness: f32,
   mode: f32,
   texSize: f32,
-  pad0: f32,
+  smoothMax: f32,
   pad1: f32,
   pad2: f32,
 };
@@ -67,9 +67,43 @@ fn falloff(world: vec3f) -> f32 {
   return 1.0 - smoothstep(min(dab.hardness, 0.999), 1.0, d);
 }
 
+// Blur radius of the smooth brush, as a fraction of the brush radius.
+const SMOOTH_FRAC = 0.3;
+// Taps per side of the smooth kernel (odd).
+const SMOOTH_TAPS = 7;
+
+// Gaussian blur of the dab-start copy around texel c, radius r texels. Taps on texels no
+// chart covers (dilation map -2, so still zero) are skipped, so island edges keep their value.
+fn smoothSample(c: vec2i, r: f32) -> vec4f {
+  let size = i32(dab.texSize);
+  let half = SMOOTH_TAPS / 2;
+  let step = r / f32(half);
+  var sum = vec4f(0.0);
+  var wsum = 0.0;
+  for (var dy = -half; dy <= half; dy++) {
+    for (var dx = -half; dx <= half; dx++) {
+      let o = vec2f(f32(dx), f32(dy)) * step;
+      let p = clamp(c + vec2i(round(o)), vec2i(0), vec2i(size - 1));
+      if (dilateMap[p.y * size + p.x] == -2) {
+        continue;
+      }
+      // sigma = r / 2
+      let w = exp(-2.0 * dot(o, o) / max(r * r, 1e-6));
+      sum += textureLoad(scratch, p, 0) * w;
+      wsum += w;
+    }
+  }
+  if (wsum <= 0.0) {
+    return textureLoad(scratch, c, 0);
+  }
+  return sum / wsum;
+}
+
 // SET and SMOOTH blend with src-alpha; ADD blends one/one.
 @fragment
 fn fsDab(i: DabOut) -> @location(0) vec4f {
+  // world size of one texel; derivatives must be taken before the discard
+  let texelWorld = max(length(dpdx(i.world)), length(dpdy(i.world)));
   let f = falloff(i.world);
   if (f <= 0.0) {
     discard;
@@ -77,16 +111,8 @@ fn fsDab(i: DabOut) -> @location(0) vec4f {
   let a = dab.strength * f;
 
   if (dab.mode > 1.5) {
-    // smooth: 3x3 box average of the stroke-start copy around this texel
-    let c = vec2i(i.clip.xy);
-    var sum = vec4f(0.0);
-    for (var dy = -1; dy <= 1; dy++) {
-      for (var dx = -1; dx <= 1; dx++) {
-        let p = clamp(c + vec2i(dx, dy), vec2i(0), vec2i(i32(dab.texSize) - 1));
-        sum += textureLoad(scratch, p, 0);
-      }
-    }
-    return vec4f((sum / 9.0).xyz, a);
+    let r = clamp(SMOOTH_FRAC * dab.radius / max(texelWorld, 1e-9), 1.0, dab.smoothMax);
+    return vec4f(smoothSample(vec2i(i.clip.xy), r).xyz, a);
   }
   if (dab.mode > 0.5) {
     return vec4f(vec3f(dab.value * a), 0.0);

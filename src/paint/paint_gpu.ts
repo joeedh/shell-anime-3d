@@ -11,6 +11,8 @@ export const TILE = 64;
 const TEXEL_BYTES = 8;
 const FORMAT: GPUTextureFormat = "rgba16float";
 const DAB_UNIFORM_SIZE = 48;
+/** Largest blur radius of the smooth brush, in texels (paint.wgsl `smoothSample`). */
+const SMOOTH_MAX_TEXELS = 16;
 
 /** Downloaded stroke tiles: the state before the stroke and after it, per tile. */
 export interface TileSet {
@@ -292,13 +294,32 @@ export class PaintGPU {
     if (rect[2] <= rect[0] || rect[3] <= rect[1]) return;
 
     const u = new Float32Array(DAB_UNIFORM_SIZE / 4);
-    u.set([d.center[0], d.center[1], d.center[2], d.radius, d.value, d.strength, d.hardness, d.mode, size]);
+    u.set([
+      d.center[0],
+      d.center[1],
+      d.center[2],
+      d.radius,
+      d.value,
+      d.strength,
+      d.hardness,
+      d.mode,
+      size,
+      SMOOTH_MAX_TEXELS,
+    ]);
     device.queue.writeBuffer(this.dabUniform!, 0, u);
 
     const encoder = device.createCommandEncoder();
     this.saveTiles(d.tiles, encoder);
     if (d.mode === BrushMode.SMOOTH) {
-      this.copyRect(this.texture!, this.scratch!, rect, encoder);
+      // the blur reads up to SMOOTH_MAX_TEXELS beyond the dab
+      const m = SMOOTH_MAX_TEXELS + 1;
+      const wide: [number, number, number, number] = [
+        Math.max(0, rect[0] - m),
+        Math.max(0, rect[1] - m),
+        Math.min(size, rect[2] + m),
+        Math.min(size, rect[3] + m),
+      ];
+      this.copyRect(this.texture!, this.scratch!, wide, encoder);
     }
 
     const bind = device.createBindGroup({
