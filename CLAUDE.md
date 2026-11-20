@@ -5,7 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project overview
 
 This is a test app for the shell-outline concept in `docs/shell-outline.md`. The implementation
-plan, with the status of each milestone, is `docs/plans/test-app.md`.
+plan, with the status of each milestone, is `docs/plans/test-app.md`. How the clip models
+work now is in `docs/clip-models.md`.
 
 Stack:
 

@@ -264,6 +264,9 @@ Passes, in order:
 
 ### Clip model 1: osculating (algebraic) sphere
 
+- The current description of both models is `docs/clip-models.md`; this section is the
+  original plan.
+
 - **Per vertex, in the vertex shader:** build the algebraic sphere through the vertex in view
   space, which keeps magnitudes small:
   `s(x) = (H/2)|x|² + (N − H·P)·x + (H/2·|P|² − N·P)`.
@@ -285,22 +288,13 @@ Passes, in order:
 
 ### Clip model 2: PN-triangle patch
 
-- **Precomputed per triangle:** the 10 cubic Bézier control points (Vlachos et al. 2001),
-  refreshed by a compute pass after edits.
-- **Per fragment:**
-  1. Minimise `f(u,v) = |P⊥(B(u,v) − O)|²` (distance to the ray) from the base barycentrics.
-     - Use **full-Hessian Newton with Levenberg-Marquardt damping**, keeping the best iterate,
-       6 iterations.
-     - Plain Gauss-Newton is singular at the contour, because det J ∝ N·D = 0 there.
-  2. Barycentrics may extrapolate down to −0.5 for the geometry.
-  3. The UV used to sample `r` is computed from barycentrics **clamped to the triangle**, so
-     extrapolation never reads another chart or the gutter.
-  4. Keep the fragment if `dist < r`.
-- **Known approximation:** r is taken at the closest point, not as min over p of
-  (dist − r(p)), so it's slightly off where width changes sharply.
-- **Superseded (2026-11-20):** that approximation lost whole line segments on sculpted
-  meshes with painted width, and the closest-point search could stall on PN creases. The
-  shell now tests the width envelope; see `docs/plans/pn-envelope.md`.
+- Each triangle's cubic PN patch (Vlachos et al. 2001). The original plan had each fragment
+  find the patch point closest to its ray by damped Newton, and keep it if that point's
+  radius reached the ray.
+- **Superseded (2026-11-20):** that lost whole line segments on sculpted meshes with
+  painted width, and the search could stall on PN creases. The shell now tests the width
+  envelope (`docs/plans/pn-envelope.md`). The current algorithm is described in
+  `docs/clip-models.md`.
 
 ### Ground-truth reference (WebGPU)
 
