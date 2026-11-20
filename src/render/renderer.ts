@@ -69,6 +69,9 @@ export class Renderer {
         { binding: 3, visibility: vis, texture: { sampleType: "float" } },
         { binding: 4, visibility: vis, sampler: { type: "filtering" } },
         { binding: 5, visibility: vis, buffer: { type: "read-only-storage" } },
+        // fragment only: the reference's compute passes share this layout and already use
+        // all 8 default storage-buffer slots
+        { binding: 6, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } },
       ],
     });
     this.sampler = device.createSampler({
@@ -163,7 +166,7 @@ export class Renderer {
 
   private getBindGroup() {
     const mb = this.meshBuffers;
-    const key = [mb.vertexBuffer, mb.triBuffer, this.paint.texture, mb.pnBuffer];
+    const key = [mb.vertexBuffer, mb.triBuffer, this.paint.texture, mb.pnBuffer, mb.ringBuffer];
     if (this.bindGroup && key.every((k, i) => k === this.bindGroupKey[i])) {
       return this.bindGroup;
     }
@@ -177,6 +180,7 @@ export class Renderer {
         { binding: 3, resource: this.paint.texture!.createView() },
         { binding: 4, resource: this.sampler! },
         { binding: 5, resource: { buffer: mb.pnBuffer! } },
+        { binding: 6, resource: { buffer: mb.ringBuffer! } },
       ],
     });
     this.bindGroupKey = key;

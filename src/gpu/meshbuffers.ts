@@ -1,15 +1,19 @@
 import { getGPU } from "./device";
 import type { Mesh } from "../mesh/mesh";
-import { triNeighbours } from "../mesh/adjacency";
+import { triNeighbours, triRings } from "../mesh/adjacency";
 import { pnControlPoints } from "../math/pn";
+import { pnBound } from "../math/pn_envelope";
 import type { Vec3 } from "../math/pn";
 
 /** Floats per vertex record: pos.xyz, H, normal.xyz, wmax, cAbs, cRel, extra, pad. */
 export const VERTEX_STRIDE = 12;
 /** Words per triangle record: i0, i1, i2, pad, uv0.xy, uv1.xy, uv2.xy, pad, pad. */
 export const TRI_STRIDE = 12;
-/** vec4s per PN record: 10 control points (xyz), then the 3 edge neighbours (as i32 bits). */
-export const PN_STRIDE = 11;
+/**
+ * vec4s per PN record: 10 control points (xyz), the 3 edge neighbours (as i32 bits), then
+ * the control points' bounding sphere (centre, radius).
+ */
+export const PN_STRIDE = 12;
 
 /**
  * GPU copies of a mesh for vertex pulling. Packed into two storage buffers because the
@@ -23,6 +27,8 @@ export class MeshBuffers {
   vertTrisBuffer: GPUBuffer | undefined;
   /** PN control points and edge neighbours per triangle (clip model 2). */
   pnBuffer: GPUBuffer | undefined;
+  /** Candidate triangles of the PN envelope search (triRings), fragment stage only. */
+  ringBuffer: GPUBuffer | undefined;
   private neighbours: Int32Array | undefined;
   triCount = 0;
   vertCount = 0;
@@ -73,6 +79,8 @@ export class MeshBuffers {
       iv[o + 40] = nb[t * 3];
       iv[o + 41] = nb[t * 3 + 1];
       iv[o + 42] = nb[t * 3 + 2];
+      const { c, rad } = pnBound(cp);
+      f.set([c[0], c[1], c[2], rad], o + 44);
     }
     return f;
   }
@@ -161,6 +169,17 @@ export class MeshBuffers {
     }
     if (this.withPN && (recreate || !this.neighbours)) {
       this.neighbours = triNeighbours(mesh);
+    }
+    if (recreate || !this.ringBuffer) {
+      // the ring table depends on topology only
+      const rings = this.withPN ? triRings(mesh) : new Uint32Array(1);
+      this.ringBuffer?.destroy();
+      this.ringBuffer = device.createBuffer({
+        label: "pn rings",
+        size: rings.byteLength,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      device.queue.writeBuffer(this.ringBuffer, 0, rings);
     }
     const pnData = this.withPN ? this.buildPN(mesh, this.neighbours!) : new Float32Array(4);
     if (recreate || !this.pnBuffer || this.pnBuffer.size !== pnData.byteLength) {

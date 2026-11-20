@@ -28,3 +28,48 @@ export function triNeighbours(mesh: Mesh): Int32Array {
   }
   return out;
 }
+
+/**
+ * Per-triangle candidate lists for the PN envelope search: the triangles within `rings`
+ * shared-vertex steps of each triangle, in BFS order (nearest ring first), the triangle
+ * itself excluded, at most `cap` per list. Packed GPU-style: entries 0..nt are offsets into
+ * the same array (absolute indices), followed by the concatenated lists.
+ */
+export function triRings(mesh: Mesh, rings = 2, cap = 48): Uint32Array {
+  const nt = mesh.triCount;
+  const tris = mesh.tris;
+  const vertTris: number[][] = Array.from({ length: mesh.vertCount }, () => []);
+  for (let t = 0; t < nt; t++) for (let k = 0; k < 3; k++) vertTris[tris[t * 3 + k]].push(t);
+
+  const lists: number[][] = [];
+  let total = 0;
+  const seen = new Int32Array(nt).fill(-1);
+  for (let t = 0; t < nt; t++) {
+    const list: number[] = [];
+    seen[t] = t;
+    let front = [t];
+    for (let step = 0; step < rings && list.length < cap; step++) {
+      const next: number[] = [];
+      for (const f of front)
+        for (let k = 0; k < 3; k++)
+          for (const nb of vertTris[tris[f * 3 + k]])
+            if (seen[nb] !== t) {
+              seen[nb] = t;
+              next.push(nb);
+            }
+      for (const nb of next) if (list.length < cap) list.push(nb);
+      front = next;
+    }
+    lists.push(list);
+    total += list.length;
+  }
+  const out = new Uint32Array(nt + 1 + total);
+  let at = nt + 1;
+  for (let t = 0; t < nt; t++) {
+    out[t] = at;
+    out.set(lists[t], at);
+    at += lists[t].length;
+  }
+  out[nt] = at;
+  return out;
+}

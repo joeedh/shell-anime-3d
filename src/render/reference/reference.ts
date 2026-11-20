@@ -271,7 +271,7 @@ export class ReferencePass {
 
   private getMeshGroup(maps: GPUTexture) {
     const mb = this.buffers;
-    const key = [mb.vertexBuffer, mb.triBuffer, mb.pnBuffer, maps];
+    const key = [mb.vertexBuffer, mb.triBuffer, mb.pnBuffer, mb.ringBuffer, maps];
     if (this.meshGroup && key.every((k, i) => k === this.meshGroupKey[i])) return this.meshGroup;
     this.meshGroup = getGPU().device.createBindGroup({
       layout: this.meshLayout,
@@ -282,6 +282,7 @@ export class ReferencePass {
         { binding: 3, resource: maps.createView() },
         { binding: 4, resource: this.sampler },
         { binding: 5, resource: { buffer: mb.pnBuffer! } },
+        { binding: 6, resource: { buffer: mb.ringBuffer! } },
       ],
     });
     this.meshGroupKey = key;

@@ -134,3 +134,39 @@ Strategies, roughly cheapest first:
   (`_appstate.renderer.reference.debugFlags = 2`) while the CPU replay shows none. Any
   test with a tolerance below about 1e-5 relative, on positions several units from the
   origin, needs relative coordinates in f32.
+
+## PN outline loses whole segments on a sculpted mesh with painted width
+
+- **Symptom:** in `tests/scenes/scene.sa3d`, the outline breaks where a wide painted patch
+  crosses the silhouette of a sculpted bulge, with both clip models. Compare mode shows
+  long red runs.
+- **Cause:** two, in the PN model.
+  - The fragment kept its pixel if the distance to the _closest_ patch point was below the
+    radius _there_. The reference keeps it if _any_ point's ball reaches it, which is a
+    farther point with a bigger radius where the width jumps.
+  - PN patches are only C0, so along a grazing ray a shared edge can be its own local
+    minimum of distance. At (1260, 660) the search bounced between triangles 676 and 677
+    until its hop budget ran out; the right point was on 675.
+- **Fix:** the envelope search in `pn_envelope.ts` / `pn.wgsl` (plan:
+  `docs/plans/pn-envelope.md`). Missing PN pixels fell from 509 to 38. The sphere model is
+  local by construction and keeps its misses there.
+- **How to spot it next time:**
+  - `pnpm run rd debug <shell event> x y "pc.,pr,hops"` on a red compare pixel: a search
+    that ends with `hops` at its limit and a large `pc.dist` is stuck in the wrong basin.
+  - For a search-quality question, use the CPU harness (`tests/pn_envelope.test.ts`). It
+    emulates the shell pass against a saved compare mask and includes a dense-sampling
+    oracle, which tells search failures apart from surface differences.
+  - Clearing the width map (`scene.maps.clear()`) separates width-gradient problems from
+    geometry problems.
+
+## Compare mode loses the GPU device on dense meshes with wide lines
+
+- **Symptom:** after turning on Compare To Reference, the stats never appear and the
+  canvas freezes. No WebGPU error is logged (the device-lost message can come before a
+  console hook is installed). `mapAsync` rejects with `[Device] is lost`.
+- **Cause:** the reference pass takes too long and Windows resets the GPU. UV sphere
+  density 64 survives a 4 px line, loses the device after one frame at 8 px, and loses it
+  at once at 16 px.
+- **Fix:** none yet; the acceptance runs use 4 px on that mesh.
+- **How to spot it next time:** wrap `reference.readback.mapAsync` in a CDP eval and log
+  the rejection; reload the app (`cdp reload`, then wait for `_appstate`) to get a new device.

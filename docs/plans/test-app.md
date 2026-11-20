@@ -285,6 +285,9 @@ Passes, in order:
   4. Keep the fragment if `dist < r`.
 - **Known approximation:** r is taken at the closest point, not as min over p of
   (dist − r(p)), so it's slightly off where width changes sharply.
+- **Superseded (2026-11-20):** that approximation lost whole line segments on sculpted
+  meshes with painted width, and the closest-point search could stall on PN creases. The
+  shell now tests the width envelope; see `docs/plans/pn-envelope.md`.
 
 ### Ground-truth reference (WebGPU)
 
@@ -380,7 +383,7 @@ Passes, in order:
     `FileHelper.read` ignores `byteOffset`.
 - **JSON:**
   `{ magic: "SA3D", version: [maj, min, mic], structScripts: write_scripts(), scene:
-  writeJSON(scene) }`.
+writeJSON(scene) }`.
   - Load runs
     `readJSON(json.scene, Scene, { version: filehelper.versionToInt(json.version) })`.
     `MigrateOptions.version` must be a number; an array silently disables every guard.
@@ -473,12 +476,12 @@ Status: all milestones done.
    - Stale flag: `mesh.correctionStale` (geometry changed since the solve), for M9.
    - Measured, pixels both / missing / extra, raw hull | sphere | PN:
 
-     | mesh | before solve | after solve |
-     | --- | --- | --- |
-     | UV sphere, 960 tris | 8505/12098/11982 \| 8505/12098/11982 \| 8489/12114/13925 | 20603/0/26309 \| 20478/125/12957 \| 20565/38/14772 |
-     | torus, 2304 | 15759/3758/3740 \| 14525/4992/3710 \| 15764/3753/4738 | 19474/43/10746 \| 15330/4187/3996 \| 19472/45/4924 |
-     | capsule, 1984 | 14369/4018/4007 \| 14367/4020/4007 \| 14369/4018/4890 | 18387/0/9082 \| 18361/26/4725 \| 18382/5/5067 |
-     | cube, 192 | 5995/11522/10031 \| 2728/14789/11203 \| 5873/11644/20784 | 17363/154/202229 \| 10248/7269/71796 \| 11153/6364/37110 |
+     | mesh                | before solve                                             | after solve                                              |
+     | ------------------- | -------------------------------------------------------- | -------------------------------------------------------- |
+     | UV sphere, 960 tris | 8505/12098/11982 \| 8505/12098/11982 \| 8489/12114/13925 | 20603/0/26309 \| 20478/125/12957 \| 20565/38/14772       |
+     | torus, 2304         | 15759/3758/3740 \| 14525/4992/3710 \| 15764/3753/4738    | 19474/43/10746 \| 15330/4187/3996 \| 19472/45/4924       |
+     | capsule, 1984       | 14369/4018/4007 \| 14367/4020/4007 \| 14369/4018/4890    | 18387/0/9082 \| 18361/26/4725 \| 18382/5/5067            |
+     | cube, 192           | 5995/11522/10031 \| 2728/14789/11203 \| 5873/11644/20784 | 17363/154/202229 \| 10248/7269/71796 \| 11153/6364/37110 |
 
    - Findings:
      - The raw hull's misses drop to about zero everywhere, so the shell is conservative.

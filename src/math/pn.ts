@@ -17,6 +17,9 @@
  *
  * When a step leaves the triangle the walk hops to the neighbour across the crossed edge,
  * because the fragment's own triangle is often several edges behind the contour.
+ *
+ * The shell pass no longer uses pnClosest: it tests the width envelope instead
+ * (pn_envelope.ts). pnClosest stays for tests and for the harness's comparison row.
  */
 
 export type Vec3 = [number, number, number];

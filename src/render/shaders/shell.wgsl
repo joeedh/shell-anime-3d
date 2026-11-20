@@ -102,16 +102,13 @@ fn fsShell(i: ShellOut) -> ShellFrag {
   if (cam.clipModel > 0.5 && cam.clipModel < 1.5) {
     res = sphereClip(i.sphereU, i.sphereU4, O, D, r);
   } else if (cam.clipModel > 1.5) {
-    // PN: world-space ray through this fragment; r is taken at the closest point
-    let pc = pnClosest(i.tri, i.world, worldDir);
-    let pt = tris[pc.tri];
-    let cb = max(vec3f(1.0 - pc.u - pc.v, pc.u, pc.v), vec3f(0.0));
-    let cuv = (pt.uv0 * cb.x + pt.uv1 * cb.y + pt.uv2 * cb.z) / (cb.x + cb.y + cb.z);
-    let pr = targetWidthPx(cuv, worldDir) * pw;
-    res.keep = pc.dist < pr;
+    // PN: is the world-space ray inside the width envelope of the patch union?
+    let pe = pnEnvelope(i.tri, i.world, worldDir, pw);
+    res.keep = envHit(pe);
     if (res.keep) {
       hasWorldExit = true;
-      exitWorld = i.world + worldDir * (pc.t + sqrt(max(pr * pr - pc.dist * pc.dist, 0.0)));
+      let t = dot(pe.e.B - i.world, worldDir);
+      exitWorld = i.world + worldDir * (t + sqrt(max(pe.rad.r * pe.rad.r - pe.d * pe.d, 0.0)));
     }
   }
   if (!res.keep) {
