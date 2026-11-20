@@ -27,6 +27,7 @@ pnpm run build               # esbuild: src/main.ts -> app/dist/app.js
 pnpm run start               # build, then launch NW.js with CDP on port 9222
 pnpm run cdp logs 5          # reload the running app and print console output for 5 s
 pnpm run cdp eval "<expr>"   # evaluate JS in the running app (awaits promises)
+node tools/cdp.mjs eval "$(cat script.js)"   # multi-line scripts (pnpm mangles the quoting)
 pnpm run cdp screenshot f.png
 pnpm run start -- --renderdoc    # launch under RenderDoc; then `pnpm run rd capture|actions|pick|debug`
 pnpm run typecheck           # tsgo --noEmit
@@ -50,6 +51,10 @@ pnpm run format              # prettier --write
   types (see `docs/debugging.md`).
 - **Node modules at runtime:** reach them through `src/core/platform.ts` (`globalThis.require`).
   `import fs from "fs"` fails in NW.js.
+- **Scripting the app:** `toolstack.undo()`/`redo()` are async. Tool inputs are
+  space-separated in the path (`mesh.smooth(factor=0.3 iterations=2)`), and path.ux
+  remembers the last values used. More in `docs/debugging.md` ("Scripting the app over
+  CDP").
 - **Undo:** `src/core/undo.ts` patches `ToolOp.prototype` with whole-scene snapshot undo. Ops
   that change large data override `undoPre`/`undo`/`calcUndoMem`.
 

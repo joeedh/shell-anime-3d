@@ -43,6 +43,16 @@ Strategies, roughly cheapest first:
   - `rd capture` deletes every other per-frame capture in `.gpu-captures/`. Navigating the
     view while launched with `--renderdoc` fills the disk quickly.
 
+- **Scripting the app over CDP.** For anything longer than one line, write the script to a
+  file and run `node tools/cdp.mjs eval "$(cat script.js)"`. The pnpm wrapper mangles the
+  quoting of multi-line scripts (`SyntaxError: Invalid or unexpected token`).
+  - `_appstate.toolstack.undo()` and `redo()` are async; await them before reading the
+    scene.
+  - Tool inputs go in the tool path, space-separated: `mesh.smooth(factor=0.3 iterations=2)`.
+    A comma is a parse error. path.ux remembers the last values for the next run, including
+    the panel button's.
+  - Load a scene with `_appstate.loadSceneFile(path)`.
+
 - **GPU timing with Nsight Systems.** No setup in the app:
 
   ```bash
@@ -170,3 +180,15 @@ Strategies, roughly cheapest first:
 - **Fix:** none yet; the acceptance runs use 4 px on that mesh.
 - **How to spot it next time:** wrap `reference.readback.mapAsync` in a CDP eval and log
   the rejection; reload the app (`cdp reload`, then wait for `_appstate`) to get a new device.
+
+## Compare counts read right after a change are stale
+
+- **Symptom:** a CDP script switches `clipModel` (or edits the mesh), reads
+  `_appstate.renderer.reference.stats`, and gets the same missing/extra counts for both
+  clip models.
+- **Cause:** the reference rebuild and the compare readback finish frames after the change.
+  After a mesh edit plus Solve Correction, even 10 redraws 700 ms apart sometimes
+  returned the previous model's counts.
+- **Fix:** redraw about 14 frames, 700 ms apart, before reading the stats, and re-read if
+  the counts did not change.
+- **How to spot it next time:** two different models or meshes giving identical counts.

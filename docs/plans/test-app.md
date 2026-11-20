@@ -39,7 +39,8 @@ extern/path.ux/          git submodule (github.com/joeedh/path.ux), recursive
 app/                     NW.js app dir: package.json manifest, index.html, dist/
 src/
   core/      app state, context, toolop undo patch, file I/O, settings
-  mesh/      Mesh, primitives, adjacency, BVH, curvature, normals, butterfly subdivision
+  mesh/      Mesh, primitives, adjacency, BVH, curvature, normals, butterfly subdivision,
+             mesh ops (primitive, unwrap, subdivide smooth, smooth, correction)
   uv/        chart creation, area-correction solver, packer
   paint/     paint textures, GPU brush, tile undo
   sculpt/    draw and smooth brushes
@@ -130,6 +131,16 @@ tests/       vitest
   (`SetPrimitiveOp`, `UnwrapOp`). Its undo stores the whole previous mesh and paint mirror.
   It is not a data-path property edit, because undoing those would regenerate the mesh and
   lose sculpt and paint work.
+- **Subdivide Smooth and Smooth** (`mesh.subdivide_smooth`, `mesh.smooth`; plan
+  `docs/plans/subdivide-smooth.md`):
+  - Subdivide Smooth splits every triangle 1→4 at its edge midpoints, then smooths. Smooth
+    only smooths.
+  - The smoothing (`src/mesh/smooth.ts`) is a cotangent Laplacian applied along the normal
+    only, with a Taubin λ/μ step so the mesh does not shrink. Boundary and non-manifold
+    vertices stay fixed.
+  - Both keep the UV layout, so the paint is kept. The correction map is carried over and
+    flagged stale, and the result is not analytic.
+  - Undo restores the whole previous mesh and its correction state (none, fresh or stale).
 
 ## UV unwrapper (`src/uv/`)
 
@@ -161,7 +172,9 @@ tests/       vitest
     center.
   - Blending is source-alpha, with a write mask on the selected channel.
   - Because falloff is 3D, both sides of a UV seam are painted.
-  - Smooth mode reads a copy of the touched tiles.
+  - Smooth mode reads a copy of the touched area, widened by the blur radius. It is a
+    7×7-tap Gaussian whose radius is 0.3× the brush radius in texels (1 to 16), measured
+    from the world size of a texel. Taps on texels no chart covers are skipped.
 - **Gutters:**
   - Dilation copies edge texels outward into the gutter.
   - It ping-pongs between a sampled copy and the target, because read-write `rgba16float`
@@ -502,6 +515,15 @@ Status: all milestones done.
    - Verified in the app: draw stroke, then undo and redo (positions restored exactly), and
      a ridge across the silhouette compared against the rebuilt reference after a re-solve
      (PN: 497 missing, 20492 shared).
+
+## Later additions (after the milestones)
+
+- [done] PN clip model tests the width envelope, not the closest point
+  (`docs/plans/pn-envelope.md`, 53cf7a0).
+- [done] Subdivide Smooth and Smooth mesh ops (`docs/plans/subdivide-smooth.md`, ef48da7,
+  19b5419).
+- [done] Paint smooth brush blur scales with the brush; it was a fixed 3×3 texel box
+  (1b10d9a).
 
 ## Pressure-test results (round 1, 2026-11-19)
 
