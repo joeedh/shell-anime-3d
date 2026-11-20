@@ -15,6 +15,7 @@ export class PropertiesEditor extends Editor {
     prim.prop("scene.pendingPrimitive.radius2");
     prim.tool("mesh.set_primitive()");
     prim.tool("mesh.unwrap()");
+    prim.tool("mesh.subdivide_smooth()");
     prim.tool("mesh.solve_correction()");
     prim.tool("mesh.clear_correction()");
 

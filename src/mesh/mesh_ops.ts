@@ -1,9 +1,10 @@
-import { ToolOp, nstructjs } from "../pathux";
+import { BoolProperty, FloatProperty, IntProperty, ToolOp, nstructjs } from "../pathux";
 import { Mesh } from "./mesh";
 import { makePrimitive } from "./primitives";
 import { unwrapMesh } from "../uv/unwrap";
 import type { AppContext } from "../core/context";
 import { solveCorrection } from "../solver/correction";
+import { SUBDIVIDE_SMOOTH_DEFAULTS, subdivideSmooth } from "./subdivide";
 
 const ToolOpBase = ToolOp as unknown as new () => ToolOp<{}, {}, AppContext>;
 
@@ -90,6 +91,88 @@ export class UnwrapOp extends MeshResetOp {
   }
 }
 ToolOp.register(UnwrapOp as unknown as Parameters<typeof ToolOp.register>[0]);
+
+type CorrState = "none" | "fresh" | "stale";
+
+/**
+ * Whether the correction map was solved, and for this geometry. `corrSolvedAt` is not saved
+ * in files, so a loaded non-zero map counts as stale.
+ */
+function correctionState(mesh: Mesh): CorrState {
+  if (mesh.corrSolvedAt >= 0) return mesh.correctionStale ? "stale" : "fresh";
+  return mesh.cAbs.some((x) => x !== 0) || mesh.cRel.some((x) => x !== 0) ? "stale" : "none";
+}
+
+/** Re-expresses a state on a mesh whose `geomVersion` started over (snapshot restore, new mesh). */
+function setCorrectionState(mesh: Mesh, state: CorrState) {
+  mesh.corrSolvedAt = state === "none" ? -1 : state === "fresh" ? mesh.geomVersion : mesh.geomVersion - 1;
+}
+
+type SubdivideInputs = { factor: FloatProperty; iterations: IntProperty; keepVolume: BoolProperty };
+const SubdivideBase = ToolOp as unknown as new () => ToolOp<SubdivideInputs, {}, AppContext>;
+
+/**
+ * Splits every triangle 1→4 and smooths a little (src/mesh/subdivide.ts). The UV layout is
+ * kept, so the paint survives; undo restores the previous mesh.
+ */
+export class SubdivideSmoothOp extends SubdivideBase {
+  private oldMesh: number[] | undefined;
+  private oldCorr: CorrState = "none";
+
+  static tooldef() {
+    const d = SUBDIVIDE_SMOOTH_DEFAULTS;
+    return {
+      uiname: "Subdivide Smooth",
+      toolpath: "mesh.subdivide_smooth",
+      description: "Split every triangle into four, then apply a little Laplacian smoothing (keeps paint)",
+      inputs: {
+        factor: new FloatProperty(d.factor, "factor", "Smooth").setRange(0, 1),
+        iterations: new IntProperty(d.iterations, "iterations", "Iterations").setRange(0, 10),
+        keepVolume: new BoolProperty(d.keepVolume, "keepVolume", "Keep Volume"),
+      },
+      outputs: {},
+    };
+  }
+
+  undoPre(ctx: AppContext) {
+    const mesh = ctx.scene.mesh;
+    this.oldMesh = snapshotMesh(mesh);
+    this.oldCorr = correctionState(mesh);
+  }
+
+  undo(ctx: AppContext) {
+    if (!this.oldMesh) return;
+    const mesh = restoreMesh(this.oldMesh);
+    setCorrectionState(mesh, this.oldCorr);
+    ctx.scene.setMesh(mesh);
+    window.redraw_all();
+  }
+
+  calcUndoMem() {
+    return this.oldMesh?.length ?? 0;
+  }
+
+  exec(ctx: AppContext) {
+    const old = ctx.scene.mesh;
+    const mesh = subdivideSmooth(old, {
+      // setValue does not enforce the property range
+      factor: Math.min(1, Math.max(0, this.inputs.factor.getValue())),
+      iterations: Math.min(10, Math.max(0, Math.round(this.inputs.iterations.getValue()))),
+      keepVolume: this.inputs.keepVolume.getValue(),
+    });
+    // the carried-over correction map is only a starting point: flag it stale if it was solved
+    const solved = correctionState(old) !== "none";
+    if (solved) setCorrectionState(mesh, "stale");
+    ctx.scene.setMesh(mesh);
+    _appstate.viewctx.report(
+      `Subdivided: ${old.triCount} → ${mesh.triCount} triangles` +
+        (solved ? " (correction map stale: Solve Correction)" : ""),
+      solved ? "orange" : "green",
+    );
+    window.redraw_all();
+  }
+}
+ToolOp.register(SubdivideSmoothOp as unknown as Parameters<typeof ToolOp.register>[0]);
 
 /** Solves the correction map (c_abs, c_rel) for the current geometry; see src/solver. */
 export class SolveCorrectionOp extends ToolOpBase {
