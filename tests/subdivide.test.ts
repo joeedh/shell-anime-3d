@@ -3,6 +3,7 @@ import { Mesh, PrimitiveParams, PrimitiveType } from "../src/mesh/mesh";
 import { makePrimitive } from "../src/mesh/primitives";
 import { unwrapMesh } from "../src/uv/unwrap";
 import { subdivideSmooth } from "../src/mesh/subdivide";
+import { smoothPositions } from "../src/mesh/smooth";
 
 function sphere(density = 8) {
   const p = new PrimitiveParams();
@@ -126,5 +127,22 @@ describe("subdivideSmooth", () => {
     pos.splice(12, 3, 0.5, 0.5, 0);
     const s = subdivideSmooth(Mesh.fromArrays(pos, tris), { factor: 0.5, iterations: 2 });
     expect(s.positions.every(Number.isFinite)).toBe(true);
+  });
+});
+
+describe("smoothPositions", () => {
+  it("rounds a noisy sphere without shrinking it", () => {
+    const m = sphere(16);
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.04;
+    for (let v = 0; v < m.vertCount; v++) {
+      const s = 1 + rnd();
+      for (let c = 0; c < 3; c++) m.positions[v * 3 + c] *= s;
+    }
+    const before = radial(m);
+    smoothPositions(m.positions, m.tris, { factor: 0.5, iterations: 3 });
+    const after = radial(m);
+    expect(after.sd).toBeLessThan(before.sd * 0.75);
+    expect(Math.abs(after.mean - before.mean)).toBeLessThan(0.005);
   });
 });

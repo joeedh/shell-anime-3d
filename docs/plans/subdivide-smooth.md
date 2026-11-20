@@ -1,7 +1,9 @@
 # Subdivide Smooth tool
 
 Status: implemented (`src/mesh/subdivide.ts`, `SubdivideSmoothOp` in `src/mesh/mesh_ops.ts`,
-button in the Mesh panel, `tests/subdivide.test.ts`).
+button in the Mesh panel, `tests/subdivide.test.ts`). The smoothing lives in
+`src/mesh/smooth.ts` and is also its own op, `mesh.smooth` (Smooth button), with the same
+inputs, undo and correction-map handling but no split.
 
 ## Goal
 

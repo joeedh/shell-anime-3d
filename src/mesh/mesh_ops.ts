@@ -4,7 +4,9 @@ import { makePrimitive } from "./primitives";
 import { unwrapMesh } from "../uv/unwrap";
 import type { AppContext } from "../core/context";
 import { solveCorrection } from "../solver/correction";
-import { SUBDIVIDE_SMOOTH_DEFAULTS, subdivideSmooth } from "./subdivide";
+import { subdivideSmooth } from "./subdivide";
+import { SMOOTH_DEFAULTS, smoothPositions } from "./smooth";
+import type { SmoothOptions } from "./smooth";
 
 const ToolOpBase = ToolOp as unknown as new () => ToolOp<{}, {}, AppContext>;
 
@@ -108,31 +110,28 @@ function setCorrectionState(mesh: Mesh, state: CorrState) {
   mesh.corrSolvedAt = state === "none" ? -1 : state === "fresh" ? mesh.geomVersion : mesh.geomVersion - 1;
 }
 
-type SubdivideInputs = { factor: FloatProperty; iterations: IntProperty; keepVolume: BoolProperty };
-const SubdivideBase = ToolOp as unknown as new () => ToolOp<SubdivideInputs, {}, AppContext>;
+type SmoothInputs = { factor: FloatProperty; iterations: IntProperty; keepVolume: BoolProperty };
+const SmoothOpBase = ToolOp as unknown as new () => ToolOp<SmoothInputs, {}, AppContext>;
+
+function smoothInputs() {
+  const d = SMOOTH_DEFAULTS;
+  return {
+    factor: new FloatProperty(d.factor, "factor", "Smooth").setRange(0, 1),
+    iterations: new IntProperty(d.iterations, "iterations", "Iterations").setRange(0, 10),
+    keepVolume: new BoolProperty(d.keepVolume, "keepVolume", "Keep Volume"),
+  };
+}
 
 /**
- * Splits every triangle 1→4 and smooths a little (src/mesh/subdivide.ts). The UV layout is
- * kept, so the paint survives; undo restores the previous mesh.
+ * Base for ops that build a new mesh with the same UV layout (so the paint is kept) and a
+ * carried-over correction map. Undo restores the previous mesh and its correction state.
  */
-export class SubdivideSmoothOp extends SubdivideBase {
+abstract class GeometryOp extends SmoothOpBase {
   private oldMesh: number[] | undefined;
   private oldCorr: CorrState = "none";
 
-  static tooldef() {
-    const d = SUBDIVIDE_SMOOTH_DEFAULTS;
-    return {
-      uiname: "Subdivide Smooth",
-      toolpath: "mesh.subdivide_smooth",
-      description: "Split every triangle into four, then apply a little Laplacian smoothing (keeps paint)",
-      inputs: {
-        factor: new FloatProperty(d.factor, "factor", "Smooth").setRange(0, 1),
-        iterations: new IntProperty(d.iterations, "iterations", "Iterations").setRange(0, 10),
-        keepVolume: new BoolProperty(d.keepVolume, "keepVolume", "Keep Volume"),
-      },
-      outputs: {},
-    };
-  }
+  /** The new mesh, and the status-bar message describing it. */
+  protected abstract build(old: Mesh, opt: SmoothOptions): [Mesh, string];
 
   undoPre(ctx: AppContext) {
     const mesh = ctx.scene.mesh;
@@ -154,7 +153,7 @@ export class SubdivideSmoothOp extends SubdivideBase {
 
   exec(ctx: AppContext) {
     const old = ctx.scene.mesh;
-    const mesh = subdivideSmooth(old, {
+    const [mesh, msg] = this.build(old, {
       // setValue does not enforce the property range
       factor: Math.min(1, Math.max(0, this.inputs.factor.getValue())),
       iterations: Math.min(10, Math.max(0, Math.round(this.inputs.iterations.getValue()))),
@@ -165,14 +164,54 @@ export class SubdivideSmoothOp extends SubdivideBase {
     if (solved) setCorrectionState(mesh, "stale");
     ctx.scene.setMesh(mesh);
     _appstate.viewctx.report(
-      `Subdivided: ${old.triCount} → ${mesh.triCount} triangles` +
-        (solved ? " (correction map stale: Solve Correction)" : ""),
+      msg + (solved ? " (correction map stale: Solve Correction)" : ""),
       solved ? "orange" : "green",
     );
     window.redraw_all();
   }
 }
+
+/** Splits every triangle 1→4 and smooths a little (src/mesh/subdivide.ts). */
+export class SubdivideSmoothOp extends GeometryOp {
+  static tooldef() {
+    return {
+      uiname: "Subdivide Smooth",
+      toolpath: "mesh.subdivide_smooth",
+      description: "Split every triangle into four, then apply a little Laplacian smoothing (keeps paint)",
+      inputs: smoothInputs(),
+      outputs: {},
+    };
+  }
+
+  protected build(old: Mesh, opt: SmoothOptions): [Mesh, string] {
+    const mesh = subdivideSmooth(old, opt);
+    return [mesh, `Subdivided: ${old.triCount} → ${mesh.triCount} triangles`];
+  }
+}
 ToolOp.register(SubdivideSmoothOp as unknown as Parameters<typeof ToolOp.register>[0]);
+
+/** Laplacian smoothing along the normals, topology unchanged (src/mesh/smooth.ts). */
+export class SmoothOp extends GeometryOp {
+  static tooldef() {
+    return {
+      uiname: "Smooth",
+      toolpath: "mesh.smooth",
+      description: "Laplacian smoothing along the normals (keeps paint)",
+      inputs: smoothInputs(),
+      outputs: {},
+    };
+  }
+
+  protected build(old: Mesh, opt: SmoothOptions): [Mesh, string] {
+    // a copy, so undo's snapshot of the old mesh stays independent
+    const mesh = restoreMesh(snapshotMesh(old));
+    smoothPositions(mesh.positions, mesh.tris, opt);
+    mesh.isAnalytic = false;
+    mesh.rebuildDerived();
+    return [mesh, `Smoothed ${mesh.vertCount} vertices`];
+  }
+}
+ToolOp.register(SmoothOp as unknown as Parameters<typeof ToolOp.register>[0]);
 
 /** Solves the correction map (c_abs, c_rel) for the current geometry; see src/solver. */
 export class SolveCorrectionOp extends ToolOpBase {
